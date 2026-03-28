@@ -649,15 +649,15 @@ with tab_geracao:
                 col_rev1, col_rev2 = st.columns(2)
                 with col_rev1:
                      st.markdown("**Cliente e Contato:**")
-                     st.text_input("Cliente:", value=substituicoes.get("<Cliente>", ""), disabled=True, key="rev_cliente")
-                     st.text_input("Contato (Nome):", value=substituicoes.get("<Nome>", ""), disabled=True, key="rev_nome")
-                     st.text_input("Local:", value=f"{substituicoes.get('<Cidade>', '')}/{substituicoes.get('<Estado>', '')}", disabled=True, key="rev_local")
+                     st.text_input("Cliente:", value=substituicoes.get("<Cliente>", ""), disabled=True, key=f"rev_cliente_{st.session_state.get('last_selected_line', 2)}")
+                     st.text_input("Contato (Nome):", value=substituicoes.get("<Nome>", ""), disabled=True, key=f"rev_nome_{st.session_state.get('last_selected_line', 2)}")
+                     st.text_input("Local:", value=f"{substituicoes.get('<Cidade>', '')}/{substituicoes.get('<Estado>', '')}", disabled=True, key=f"rev_local_{st.session_state.get('last_selected_line', 2)}")
 
                 with col_rev2:
                      st.markdown("**Produto e Valores:**")
-                     st.text_input("Modelo Proposta:", value=substituicoes.get("<Modelo>", ""), disabled=True, key="rev_modelo_prod")
-                     st.text_input("Valor Rompedor:", value=substituicoes.get("<Valor Rompedor>", ""), disabled=True, key="rev_val_romp")
-                     st.text_input("Valor Kit:", value=substituicoes.get("<Valor Kit>", ""), disabled=True, key="rev_val_kit")
+                     st.text_input("Modelo Proposta:", value=substituicoes.get("<Modelo>", ""), disabled=True, key=f"rev_modelo_prod_{st.session_state.get('last_selected_line', 2)}")
+                     st.text_input("Valor Rompedor:", value=substituicoes.get("<Valor Rompedor>", ""), disabled=True, key=f"rev_val_romp_{st.session_state.get('last_selected_line', 2)}")
+                     st.text_input("Valor Kit:", value=substituicoes.get("<Valor Kit>", ""), disabled=True, key=f"rev_val_kit_{st.session_state.get('last_selected_line', 2)}")
 
                 with st.expander("Ver todas as substituições que serão feitas no documento"):
                      substituicoes_df = pd.DataFrame({
