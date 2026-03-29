@@ -13,6 +13,10 @@ import zipfile
 import subprocess
 import tempfile
 import base64
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from streamlit_gsheets import GSheetsConnection
 
 def get_base64_of_bin_file(bin_file):
     with open(bin_file, 'rb') as f:
@@ -31,6 +35,44 @@ else:
     logo_base64 = "https://i.postimg.cc/qqvQS9S9/jardim.png?text=AJCE+BRASIL" # Fallback
 
 temp_dir = tempfile.gettempdir()
+
+# --- INTEGRAÇÃO GOOGLE CLOUD ---
+
+def get_google_drive_service():
+    """Autentica e retorna o serviço do Google Drive"""
+    try:
+        # Tenta pegar dos segredos do Streamlit (recomendado para deploy)
+        if "google_cloud" in st.secrets:
+            creds_dict = dict(st.secrets["google_cloud"])
+            creds = service_account.Credentials.from_service_account_info(creds_dict)
+            return build('drive', 'v3', credentials=creds)
+    except Exception:
+        return None
+    return None
+
+def listar_modelos_google_drive(folder_id):
+    """Lista arquivos ODT em uma pasta específica do Drive"""
+    service = get_google_drive_service()
+    if not service:
+        return []
+    
+    query = f"'{folder_id}' in parents and mimeType='application/vnd.oasis.opendocument.text' and trashed=false"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    return results.get('files', [])
+
+def baixar_arquivo_drive(file_id):
+    """Baixa um arquivo do Drive em memória"""
+    service = get_google_drive_service()
+    if not service:
+        return None
+    
+    request = service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+    return fh.getvalue()
 
 # --- FUNÇÕES AUXILIARES (Mantidas exatamente como no original) ---
 
@@ -491,71 +533,94 @@ tab_upload, tab_selecao, tab_geracao = st.tabs([
 
 # --- Aba 1: Upload de Arquivos ---
 with tab_upload:
-    st.header("Passo 1: Faça o Upload dos Arquivos Necessários")
+    st.header("Passo 1: Fonte dos Modelos e Dados")
     st.markdown("---")
 
-    with st.container(border=True):
-        st.subheader("Planilha de Propostas (.ods, .xlsx, .xls)")
-        st.caption("Selecione a planilha que contém os dados para preencher as propostas.")
-        arquivo_planilha = st.file_uploader(
-            "Upload da Planilha",
-            type=["ods", "xlsx", "xls"],
-            key="planilha_upload_widget", 
-            label_visibility="collapsed"
-        )
-        if arquivo_planilha:
-             try:
-                  planilha_bytes = arquivo_planilha.getvalue()
-                  engine = 'odf' if arquivo_planilha.name.endswith('.ods') else None
-                  df = pd.read_excel(io.BytesIO(planilha_bytes), engine=engine)
-                  st.session_state['planilha_data'] = df
-                  st.session_state['planilha_nome'] = arquivo_planilha.name
-                  
-                  # Lógica para setar a última linha preenchida como padrão
-                  try:
-                      if 'Cliente' in df.columns:
-                          # Encontra o último índice onde a coluna 'Cliente' não é nula nem string vazia
-                          last_filled_index = df[df['Cliente'].notna() & (df['Cliente'].astype(str).str.strip() != "")].index
-                          if not last_filled_index.empty:
-                              # st.session_state['last_selected_line'] será o índice + 2 (Excel line 2 é Pandas index 0)
-                              st.session_state['last_selected_line'] = int(last_filled_index[-1]) + 2
-                          else:
-                              st.session_state['last_selected_line'] = 2
-                      else:
-                          st.session_state['last_selected_line'] = 2
-                  except Exception:
-                      st.session_state['last_selected_line'] = 2
+    col_meta1, col_meta2 = st.columns(2)
+    
+    with col_meta1:
+        with st.container(border=True):
+            st.subheader("📊 Banco de Dados (Planilha)")
+            origem_dados = st.radio("Origem da Planilha:", ["Upload Manual", "Google Sheets (Nuvem)"], horizontal=True, key="origem_dados")
+            
+            if origem_dados == "Upload Manual":
+                arquivo_planilha = st.file_uploader(
+                    "Upload da Planilha (.ods, .xlsx)",
+                    type=["ods", "xlsx", "xls"],
+                    key="planilha_upload_widget",
+                    label_visibility="collapsed"
+                )
+                if arquivo_planilha:
+                    try:
+                        planilha_bytes = arquivo_planilha.getvalue()
+                        engine = 'odf' if arquivo_planilha.name.endswith('.ods') else None
+                        df = pd.read_excel(io.BytesIO(planilha_bytes), engine=engine)
+                        st.session_state['planilha_data'] = df
+                        st.session_state['planilha_nome'] = arquivo_planilha.name
+                        
+                        # Lógica para setar a última linha preenchida como padrão
+                        if 'Cliente' in df.columns:
+                            last_filled_index = df[df['Cliente'].notna() & (df['Cliente'].astype(str).str.strip() != "")].index
+                            if not last_filled_index.empty:
+                                st.session_state['last_selected_line'] = int(last_filled_index[-1]) + 2
+                            else: st.session_state['last_selected_line'] = 2
+                        
+                        st.success(f"✅ Planilha '{arquivo_planilha.name}' carregada.")
+                    except Exception as e:
+                        st.error(f"❌ Erro ao ler planilha: {e}")
+            else:
+                st.info("🔗 Conectando ao Google Sheets...")
+                try:
+                    # Tenta conectar via Streamlit GSheets Connection
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    # O usuário precisará fornecer a URL ou configurar no secrets
+                    url_sheets = st.text_input("Cole o link da sua Planilha Google:", placeholder="https://docs.google.com/spreadsheets/d/...")
+                    if url_sheets:
+                        df = conn.read(spreadsheet=url_sheets)
+                        st.session_state['planilha_data'] = df
+                        st.session_state['planilha_nome'] = "Google Sheets"
+                        st.success("✅ Dados carregados da nuvem!")
+                except Exception as e:
+                    st.warning("⚠️ Credenciais do Google não encontradas ou link inválido. Verifique o Guia JSON.")
 
-                  st.success(f"✅ Planilha '{arquivo_planilha.name}' carregada com sucesso ({len(df)} linhas).")
-             except Exception as e:
-                  st.error(f"❌ Erro ao ler a planilha: {e}")
-                  st.session_state['planilha_data'] = None 
-                  st.session_state['planilha_nome'] = None
+    with col_meta2:
+        with st.container(border=True):
+            st.subheader("📄 Modelos de Proposta")
+            origem_modelos = st.radio("Origem dos Modelos:", ["Upload Manual", "Google Drive"], horizontal=True, key="origem_modelos")
+            
+            if origem_modelos == "Upload Manual":
+                arquivos_modelo = st.file_uploader(
+                    "Upload de Modelos ODT",
+                    type=["odt"],
+                    accept_multiple_files=True,
+                    key="modelos_upload_widget",
+                    label_visibility="collapsed"
+                )
+                if arquivos_modelo:
+                     st.session_state['modelos_info'] = {modelo.name: modelo.getvalue() for modelo in arquivos_modelo}
+                     st.success(f"✅ {len(arquivos_modelo)} modelos carregados.")
+            else:
+                st.info("📂 Buscando modelos no Google Drive...")
+                folder_id = st.text_input("ID da Pasta no Drive:", placeholder="1A2B3... (final da URL da pasta)")
+                if folder_id:
+                    modelos_drive = listar_modelos_google_drive(folder_id)
+                    if modelos_drive:
+                        st.success(f"✅ {len(modelos_drive)} modelos encontrados no Drive!")
+                        # Armazenamos apenas os IDs, baixaremos sob demanda no Passo 3
+                        st.session_state['modelos_drive_info'] = {m['name']: m['id'] for m in modelos_drive}
+                        # Para compatibilidade com o resto do código, inicializamos o dicionário de bytes
+                        st.session_state['modelos_info'] = {m['name']: None for m in modelos_drive} 
+                    else:
+                        st.error("❌ Nenhum modelo .odt encontrado ou acesso negado.")
 
     st.divider()
 
-    with st.container(border=True):
-        st.subheader("Modelos de Proposta (.odt)")
-        st.caption("Selecione um ou mais arquivos de modelo no formato ODT.")
-        arquivos_modelo = st.file_uploader(
-            "Upload de Modelos ODT",
-            type=["odt"],
-            accept_multiple_files=True,
-            key="modelos_upload_widget", 
-            label_visibility="collapsed"
-        )
-        if arquivos_modelo:
-             st.session_state['modelos_info'] = {modelo.name: modelo.getvalue() for modelo in arquivos_modelo}
-             st.success(f"✅ {len(arquivos_modelo)} modelo(s) ODT carregado(s): {', '.join(st.session_state['modelos_info'].keys())}")
-
-    st.divider()
-
-    if st.session_state['planilha_data'] is not None and st.session_state['modelos_info']:
+    if st.session_state.get('planilha_data') is not None and (st.session_state.get('modelos_info') or st.session_state.get('modelos_drive_info')):
         if st.button("Avançar para Seleção de Dados →", type="primary", key="goto_selecao"):
             st.session_state['current_tab'] = "Seleção"
             st.rerun() 
     else:
-         st.info("ℹ️ Por favor, faça o upload da planilha E de pelo menos um modelo ODT para continuar.")
+         st.info("ℹ️ Configure a planilha e os modelos para continuar.")
 
 
 # --- Aba 2: Seleção de Dados ---
@@ -606,6 +671,71 @@ with tab_selecao:
                      st.error(f"❌ Linha {linha_selecionada_usuario} inválida. Selecione um valor entre 2 e {len(df) + 1}.")
                      st.session_state['dados_linha_selecionada'] = None 
 
+            # --- NOVO: GERENCIAMENTO DE DADOS GOOGLE SHEETS ---
+            if origem_dados == "Google Sheets (Nuvem)" and st.session_state['planilha_data'] is not None:
+                st.markdown("---")
+                with st.expander("📝 Gerenciar Banco de Dados (Nuvem)", expanded=False):
+                    tab_edit, tab_add = st.tabs(["✏️ Editar Selecionada", "➕ Adicionar Nova"])
+                    
+                    with tab_edit:
+                        if st.session_state['dados_linha_selecionada']:
+                            st.write(f"Editando dados da linha {st.session_state['last_selected_line']}:")
+                            with st.form("form_edit_sheets"):
+                                novos_dados = {}
+                                col_e1, col_e2 = st.columns(2)
+                                campos_principais = ['Cliente', 'Cidade', 'Estado', 'Modelo', 'Valor Rompedor', 'Valor Kit']
+                                
+                                # Cria inputs para os campos principais
+                                for i, campo in enumerate(campos_principais):
+                                    with col_e1 if i % 2 == 0 else col_e2:
+                                        novos_dados[campo] = st.text_input(campo, value=str(st.session_state['dados_linha_selecionada'].get(campo, "")))
+                                
+                                if st.form_submit_button("💾 Salvar Alterações na Nuvem", use_container_width=True):
+                                    try:
+                                        conn = st.connection("gsheets", type=GSheetsConnection)
+                                        # Atualiza o dataframe local e envia para a nuvem
+                                        df_atualizado = st.session_state['planilha_data'].copy()
+                                        idx = st.session_state['last_selected_line'] - 2
+                                        for key, val in novos_dados.items():
+                                            df_atualizado.at[idx, key] = val
+                                        
+                                        conn.update(spreadsheet=url_sheets, data=df_atualizado)
+                                        st.session_state['planilha_data'] = df_atualizado
+                                        st.success("✅ Planilha atualizada no Google Sheets!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro ao salvar: {e}")
+                        else:
+                            st.info("Selecione uma linha válida para editar.")
+
+                    with tab_add:
+                        st.write("Insira os dados para o novo cliente:")
+                        with st.form("form_add_sheets"):
+                            dados_novos_row = {}
+                            col_a1, col_a2 = st.columns(2)
+                            for i, campo in enumerate(campos_principais):
+                                with col_a1 if i % 2 == 0 else col_a2:
+                                    dados_novos_row[campo] = st.text_input(f"Novo {campo}")
+                            
+                            if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
+                                try:
+                                    conn = st.connection("gsheets", type=GSheetsConnection)
+                                    df_atualizado = st.session_state['planilha_data'].copy()
+                                    
+                                    # Cria uma nova linha mantendo as colunas originais
+                                    nova_linha = {col: "" for col in df_atualizado.columns}
+                                    nova_linha.update(dados_novos_row)
+                                    nova_linha['Data'] = datetime.today().strftime("%Y-%m-%d")
+                                    
+                                    df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
+                                    
+                                    conn.update(spreadsheet=url_sheets, data=df_atualizado)
+                                    st.session_state['planilha_data'] = df_atualizado
+                                    st.success("✅ Novo cliente adicionado com sucesso!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao adicionar: {e}")
+
         with col_modelo:
              with st.container(border=True):
                  st.subheader("Selecione o Modelo ODT")
@@ -655,10 +785,21 @@ with tab_geracao:
     else:
         dados_linha = st.session_state['dados_linha_selecionada']
         nome_modelo_selecionado = st.session_state['modelo_selecionado_nome']
-        modelo_bytes = st.session_state['modelos_info'].get(nome_modelo_selecionado)
+        
+        # Lógica para buscar modelo - ou do Upload ou do Drive
+        modelo_bytes = st.session_state.get('modelos_info', {}).get(nome_modelo_selecionado)
+        
+        # Se não tiver em memória (bytes), tenta baixar do Drive se for o caso
+        if modelo_bytes is None and 'modelos_drive_info' in st.session_state:
+            file_id = st.session_state['modelos_drive_info'].get(nome_modelo_selecionado)
+            if file_id:
+                with st.spinner(f"📥 Baixando '{nome_modelo_selecionado}' do Google Drive..."):
+                    modelo_bytes = baixar_arquivo_drive(file_id)
+                    if modelo_bytes:
+                        st.session_state['modelos_info'][nome_modelo_selecionado] = modelo_bytes
 
         if not modelo_bytes:
-             st.error(f"❌ Erro: Modelo ODT '{nome_modelo_selecionado}' não encontrado na memória. Volte ao Passo 1.")
+             st.error(f"❌ Erro: Modelo ODT '{nome_modelo_selecionado}' não encontrado. Verifique a conexão com o Drive.")
         else:
             with st.container(border=True):
                 st.subheader("Revisão das Informações")
