@@ -41,12 +41,14 @@ temp_dir = tempfile.gettempdir()
 def get_google_drive_service():
     """Autentica e retorna o serviço do Google Drive"""
     try:
-        # Tenta pegar dos segredos do Streamlit (recomendado para deploy)
         if "google_cloud" in st.secrets:
             creds_dict = dict(st.secrets["google_cloud"])
             creds = service_account.Credentials.from_service_account_info(creds_dict)
             return build('drive', 'v3', credentials=creds)
-    except Exception:
+        else:
+            st.error("⚠️ Seção [google_cloud] não encontrada no secrets.toml.")
+    except Exception as e:
+        st.error(f"❌ Erro de Autenticação Google: {e}")
         return None
     return None
 
@@ -56,9 +58,18 @@ def listar_modelos_google_drive(folder_id):
     if not service:
         return []
     
-    query = f"'{folder_id}' in parents and mimeType='application/vnd.oasis.opendocument.text' and trashed=false"
+    # Busca por ODT com múltiplos MIME types possíveis (arquivos ODT podem ter tipos diferentes no Drive)
+    query = (
+        f"'{folder_id}' in parents and trashed=false and ("
+        f"mimeType='application/vnd.oasis.opendocument.text' or "
+        f"mimeType='application/octet-stream' or "
+        f"name contains '.odt'"
+        f")"
+    )
     results = service.files().list(q=query, fields="files(id, name)").execute()
-    return results.get('files', [])
+    # Filtra apenas arquivos .odt pelo nome
+    todos = results.get('files', [])
+    return [f for f in todos if f['name'].lower().endswith('.odt')]
 
 def baixar_arquivo_drive(file_id):
     """Baixa um arquivo do Drive em memória"""
@@ -581,7 +592,12 @@ with tab_upload:
                         st.session_state['planilha_nome'] = "Google Sheets"
                         st.success("✅ Dados carregados da nuvem!")
                 except Exception as e:
-                    st.warning("⚠️ Credenciais do Google não encontradas ou link inválido. Verifique o Guia JSON.")
+                    if "not found" in str(e).lower():
+                        st.error("❌ Planilha não encontrada. Verifique se o link está correto e se você compartilhou com o e-mail da Service Account.")
+                    elif "credential" in str(e).lower():
+                        st.error("⚠️ Credenciais do Google não configuradas corretamente no secrets.toml.")
+                    else:
+                        st.error(f"❌ Erro de Conexão: {e}")
 
     with col_meta2:
         with st.container(border=True):
@@ -671,34 +687,43 @@ with tab_selecao:
                      st.error(f"❌ Linha {linha_selecionada_usuario} inválida. Selecione um valor entre 2 e {len(df) + 1}.")
                      st.session_state['dados_linha_selecionada'] = None 
 
-            # --- NOVO: GERENCIAMENTO DE DADOS GOOGLE SHEETS ---
+            # --- GERENCIAMENTO DE DADOS GOOGLE SHEETS ---
             if origem_dados == "Google Sheets (Nuvem)" and st.session_state['planilha_data'] is not None:
                 st.markdown("---")
                 with st.expander("📝 Gerenciar Banco de Dados (Nuvem)", expanded=False):
                     tab_edit, tab_add = st.tabs(["✏️ Editar Selecionada", "➕ Adicionar Nova"])
                     
+                    # Todas as colunas da planilha carregada
+                    todas_colunas = list(st.session_state['planilha_data'].columns)
+                    
                     with tab_edit:
                         if st.session_state['dados_linha_selecionada']:
-                            st.write(f"Editando dados da linha {st.session_state['last_selected_line']}:")
+                            linha_atual = st.session_state['last_selected_line']
+                            st.write(f"Editando dados da linha **{linha_atual}** — {len(todas_colunas)} campos:")
                             with st.form("form_edit_sheets"):
                                 novos_dados = {}
-                                col_e1, col_e2 = st.columns(2)
-                                campos_principais = ['Cliente', 'Cidade', 'Estado', 'Modelo', 'Valor Rompedor', 'Valor Kit']
-                                
-                                # Cria inputs para os campos principais
-                                for i, campo in enumerate(campos_principais):
-                                    with col_e1 if i % 2 == 0 else col_e2:
-                                        novos_dados[campo] = st.text_input(campo, value=str(st.session_state['dados_linha_selecionada'].get(campo, "")))
+                                # Renderiza em pares de 2 colunas
+                                # A linha_atual entra no key para forçar recriação ao mudar de linha
+                                for i in range(0, len(todas_colunas), 2):
+                                    cols = st.columns(2)
+                                    for j, campo in enumerate(todas_colunas[i:i+2]):
+                                        valor_atual = str(st.session_state['dados_linha_selecionada'].get(campo, ""))
+                                        if valor_atual in ("nan", "None", "NaT"):
+                                            valor_atual = ""
+                                        with cols[j]:
+                                            novos_dados[campo] = st.text_input(
+                                                campo,
+                                                value=valor_atual,
+                                                key=f"edit_{campo}_{linha_atual}"  # key muda com a linha!
+                                            )
                                 
                                 if st.form_submit_button("💾 Salvar Alterações na Nuvem", use_container_width=True):
                                     try:
                                         conn = st.connection("gsheets", type=GSheetsConnection)
-                                        # Atualiza o dataframe local e envia para a nuvem
                                         df_atualizado = st.session_state['planilha_data'].copy()
                                         idx = st.session_state['last_selected_line'] - 2
                                         for key, val in novos_dados.items():
                                             df_atualizado.at[idx, key] = val
-                                        
                                         conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                         st.session_state['planilha_data'] = df_atualizado
                                         st.success("✅ Planilha atualizada no Google Sheets!")
@@ -709,32 +734,31 @@ with tab_selecao:
                             st.info("Selecione uma linha válida para editar.")
 
                     with tab_add:
-                        st.write("Insira os dados para o novo cliente:")
+                        st.write(f"Insira os dados para o novo cliente — {len(todas_colunas)} campos:")
                         with st.form("form_add_sheets"):
                             dados_novos_row = {}
-                            col_a1, col_a2 = st.columns(2)
-                            for i, campo in enumerate(campos_principais):
-                                with col_a1 if i % 2 == 0 else col_a2:
-                                    dados_novos_row[campo] = st.text_input(f"Novo {campo}")
+                            for i in range(0, len(todas_colunas), 2):
+                                cols = st.columns(2)
+                                for j, campo in enumerate(todas_colunas[i:i+2]):
+                                    with cols[j]:
+                                        # Preenche Data com hoje por padrão
+                                        valor_padrao = datetime.today().strftime("%d/%m/%Y") if campo == "Data" else ""
+                                        dados_novos_row[campo] = st.text_input(campo, value=valor_padrao, key=f"add_{campo}")
                             
                             if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
                                 try:
                                     conn = st.connection("gsheets", type=GSheetsConnection)
                                     df_atualizado = st.session_state['planilha_data'].copy()
-                                    
-                                    # Cria uma nova linha mantendo as colunas originais
                                     nova_linha = {col: "" for col in df_atualizado.columns}
                                     nova_linha.update(dados_novos_row)
-                                    nova_linha['Data'] = datetime.today().strftime("%Y-%m-%d")
-                                    
                                     df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
-                                    
                                     conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                     st.session_state['planilha_data'] = df_atualizado
                                     st.success("✅ Novo cliente adicionado com sucesso!")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao adicionar: {e}")
+
 
         with col_modelo:
              with st.container(border=True):
