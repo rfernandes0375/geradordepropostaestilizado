@@ -508,6 +508,22 @@ with tab_upload:
                   df = pd.read_excel(io.BytesIO(planilha_bytes), engine=engine)
                   st.session_state['planilha_data'] = df
                   st.session_state['planilha_nome'] = arquivo_planilha.name
+                  
+                  # Lógica para setar a última linha preenchida como padrão
+                  try:
+                      if 'Cliente' in df.columns:
+                          # Encontra o último índice onde a coluna 'Cliente' não é nula nem string vazia
+                          last_filled_index = df[df['Cliente'].notna() & (df['Cliente'].astype(str).str.strip() != "")].index
+                          if not last_filled_index.empty:
+                              # st.session_state['last_selected_line'] será o índice + 2 (Excel line 2 é Pandas index 0)
+                              st.session_state['last_selected_line'] = int(last_filled_index[-1]) + 2
+                          else:
+                              st.session_state['last_selected_line'] = 2
+                      else:
+                          st.session_state['last_selected_line'] = 2
+                  except Exception:
+                      st.session_state['last_selected_line'] = 2
+
                   st.success(f"✅ Planilha '{arquivo_planilha.name}' carregada com sucesso ({len(df)} linhas).")
              except Exception as e:
                   st.error(f"❌ Erro ao ler a planilha: {e}")
