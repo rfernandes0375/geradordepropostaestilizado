@@ -274,28 +274,37 @@ st.set_page_config(
 def load_css():
     st.markdown("""
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
         /* Esconder a marca do Streamlit */
         #MainMenu {visibility: hidden;}
         header {visibility: hidden;}
         footer {visibility: hidden;}
 
-        /* Fundo principal estilo "Dark Slate" Moderno */
+        /* Fundo principal Estilo Claro Moderno */
         [data-testid="stAppViewContainer"] {
-            background-color: #0f172a;
-            background-image: radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08), transparent 25%),
-                              radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.08), transparent 25%);
-            color: #f8fafc;
+            background-color: #f8fafc;
+            background-image: radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.05), transparent 20%),
+                              radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.05), transparent 20%);
+            color: #1e293b;
         }
 
         .main .block-container {
-             padding-top: 1rem;
-             padding-bottom: 2rem;
-             max-width: 1000px;
+             padding-top: 2rem;
+             padding-bottom: 3rem;
+             max-width: 1050px;
         }
 
         /* Títulos e Textos */
-        h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
-            color: #f8fafc !important;
+        h1, h2, h3, h4, h5, h6 {
+            color: #0f172a !important;
+            font-family: 'Inter', sans-serif !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.025em !important;
+        }
+        
+        p, label, .stMarkdown {
+            color: #334155 !important;
             font-family: 'Inter', sans-serif !important;
         }
 
@@ -305,149 +314,124 @@ def load_css():
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            margin-bottom: 2.5rem;
+            margin-bottom: 3rem;
             margin-top: 1rem;
         }
         .logo-img {
-             height: 90px;
-             margin-bottom: 1rem;
-             filter: drop-shadow(0px 10px 15px rgba(0,0,0,0.3));
+             height: 100px;
+             margin-bottom: 1.5rem;
+             filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.08));
         }
         .header-title {
             text-align: center;
-            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            font-size: 2.4rem !important;
+            font-size: 2.8rem !important;
             font-weight: 800 !important;
-            letter-spacing: -0.5px;
             margin: 0 !important;
         }
 
-        /* Glassmorphism nos Containers (Caixas) */
+        /* Soft Glassmorphism nos Containers (Tema Claro) */
         [data-testid="stVerticalBlock"] > [style*="border: 1px solid rgba(49, 51, 63, 0.2)"],
         [data-testid="stVerticalBlock"] > [style*="border: 1px solid rgba(250, 250, 250, 0.2)"] {
-            background: rgba(30, 41, 59, 0.5) !important;
-            backdrop-filter: blur(20px) !important;
-            -webkit-backdrop-filter: blur(20px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 16px !important;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
-            padding: 2rem !important;
-            margin-bottom: 1.5rem !important;
+            background: rgba(255, 255, 255, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.8) !important;
+            border-radius: 20px !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+            padding: 2.5rem !important;
+            margin-bottom: 2rem !important;
         }
 
-        /* Estilos das Abas (Tabs) Modernas */
+        /* Estilos das Abas (Tabs) Claras */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 15px;
-            background-color: transparent !important;
-            border: none;
-            justify-content: center;
-            padding-bottom: 20px;
+            gap: 12px;
+            background-color: #f1f5f9 !important;
+            border-radius: 40px;
+            padding: 6px !important;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 2rem;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
         }
         .stTabs [data-baseweb="tab"] {
-            background-color: rgba(30, 41, 59, 0.6) !important;
-            border: 1px solid rgba(255,255,255,0.05) !important;
-            border-radius: 30px !important;
-            padding: 10px 25px !important;
-            color: #94a3b8 !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 35px !important;
+            padding: 8px 24px !important;
+            color: #64748b !important;
             font-weight: 600 !important;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            transition: all 0.2s ease !important;
         }
         .stTabs [aria-selected="true"] {
-             background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-             color: white !important;
-             box-shadow: 0 10px 20px -10px rgba(59, 130, 246, 0.6) !important;
-             transform: translateY(-2px);
-             border: none !important;
-        }
-        .stTabs [data-baseweb="tab"]:hover {
-             background-color: rgba(59, 130, 246, 0.1) !important;
-             color: #f1f5f9 !important;
+             background-color: white !important;
+             color: #2563eb !important;
+             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
         }
 
-        /* Botões Primários (Gradiente Esmeralda) */
+        /* Botões Primários (Gradiente Elegante) */
         .stButton>button[kind="primary"] {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
             color: white !important;
             border: none !important;
             border-radius: 12px !important;
             font-weight: 600 !important;
-            padding: 0.75rem 1.5rem !important;
-            transition: all 0.3s ease !important;
-            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3) !important;
+            padding: 0.8rem 1.5rem !important;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
             width: 100%;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         .stButton>button[kind="primary"]:hover {
-             transform: translateY(-3px);
-             box-shadow: 0 20px 25px -5px rgba(16, 185, 129, 0.4) !important;
+             transform: translateY(-2px);
+             box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3) !important;
         }
 
-        /* Botões Secundários */
-        .stButton>button[kind="secondary"] {
-            background: rgba(51, 65, 85, 0.6) !important;
-            color: #f8fafc !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 12px !important;
-            transition: all 0.3s ease !important;
-            width: 100%;
-        }
-        .stButton>button[kind="secondary"]:hover {
-            background: rgba(71, 85, 105, 0.9) !important;
-            transform: translateY(-2px);
-        }
-
-        /* Botão de Download (Azul Cyan) */
-        .stDownloadButton>button {
-            background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 12px !important;
-            font-weight: 600 !important;
-            width: 100% !important;
-            box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.3) !important;
-            transition: transform 0.2s ease !important;
-        }
-        .stDownloadButton>button:hover {
-             transform: translateY(-3px) !important;
-             box-shadow: 0 20px 25px -5px rgba(6, 182, 212, 0.4) !important;
-        }
-
-        /* Inputs e Caixa de Arquivo */
+        /* Inputs e Caixa de Arquivo (Tema Claro) */
         input[type="text"], input[type="number"], .stNumberInput > div > div > input {
-            background-color: rgba(15, 23, 42, 0.6) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            color: white !important;
-            border-radius: 8px !important;
+            background-color: white !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #1e293b !important;
+            border-radius: 10px !important;
+            padding: 0.6rem !important;
         }
         
         .stSelectbox > div > div > div {
-            background-color: rgba(15, 23, 42, 0.6) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            color: white !important;
-            border-radius: 8px !important;
+            background-color: white !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #1e293b !important;
+            border-radius: 10px !important;
+        }
+
+        /* Inputs Desabilitados (Passo 3) */
+        input:disabled {
+            background-color: #f1f5f9 !important;
+            color: #475569 !important;
+            opacity: 1 !important;
+            -webkit-text-fill-color: #475569 !important;
         }
 
         /* Caixa de Upload do Streamlit */
         [data-testid="stFileUploadDropzone"] {
-            background: rgba(15, 23, 42, 0.3) !important;
-            border: 2px dashed rgba(255,255,255,0.15) !important;
+            background: #ffffff !important;
+            border: 2px dashed #cbd5e1 !important;
             border-radius: 16px !important;
-            transition: all 0.3s ease !important;
         }
         [data-testid="stFileUploadDropzone"]:hover {
             border-color: #3b82f6 !important;
-            background: rgba(59, 130, 246, 0.05) !important;
+            background: #f8fafc !important;
         }
 
-        /* Ajuste no rodapé do seu código */
+        /* Rodapé Fixo */
         .footer {
-            margin-top: 3rem;
-            padding: 1.5rem 0;
-            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: 4rem;
+            padding: 2rem 0;
+            border-top: 1px solid #e2e8f0;
             text-align: center;
-            color: #64748b;
-            font-size: 0.85rem;
+            color: #94a3b8;
+            font-size: 0.9rem;
         }
     </style>
     """, unsafe_allow_html=True)
