@@ -12,6 +12,24 @@ import re
 import zipfile
 import subprocess
 import tempfile
+import base64
+
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+def get_img_with_href(local_img_path):
+    img_format = local_img_path.split(".")[-1]
+    bin_str = get_base64_of_bin_file(local_img_path)
+    return f"data:image/{img_format};base64,{bin_str}"
+
+logo_base64 = ""
+if os.path.exists("logo_jardim.png"):
+    logo_base64 = get_img_with_href("logo_jardim.png")
+else:
+    logo_base64 = "https://i.postimg.cc/qqvQS9S9/jardim.png?text=AJCE+BRASIL" # Fallback
+
 temp_dir = tempfile.gettempdir()
 
 # --- FUNÇÕES AUXILIARES (Mantidas exatamente como no original) ---
@@ -265,7 +283,7 @@ def criar_substituicoes(dados):
 # --- Configuração da Página Streamlit ---
 st.set_page_config(
     page_title="Gerador de Propostas Jardim Equipamentos",
-    page_icon="https://i.postimg.cc/qqvQS9S9/jardim.png?text=AJCE+BRASIL",  # Pode usar URL diretamente
+    page_icon=logo_base64 if logo_base64 else "📊",
     layout="wide",
     initial_sidebar_state="collapsed" # Começa com sidebar recolhida
 )
@@ -440,9 +458,9 @@ load_css()
 
 # --- Cabeçalho com Logo ---
 def render_header():
-    st.markdown("""
+    st.markdown(f"""
     <div class="header-container">
-        <img class="logo-img" src="https://i.postimg.cc/qqvQS9S9/jardim.png?text=AJCE+BRASIL" alt="Logo Jardim Equipamentos">
+        <img class="logo-img" src="{logo_base64}" alt="Logo Jardim Equipamentos">
         <h1 class="header-title">Gerador de Propostas</h1>
     </div>
     """, unsafe_allow_html=True)
