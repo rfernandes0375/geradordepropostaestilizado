@@ -552,7 +552,7 @@ with tab_upload:
     with col_meta1:
         with st.container(border=True):
             st.subheader("📊 Banco de Dados (Planilha)")
-            origem_dados = st.radio("Origem da Planilha:", ["Upload Manual", "Google Sheets (Nuvem)"], horizontal=True, key="origem_dados")
+            origem_dados = st.radio("Origem da Planilha:", ["Upload Manual", "Google Sheets (Nuvem)"], horizontal=True, key="origem_dados", index=1)
             
             if origem_dados == "Upload Manual":
                 arquivo_planilha = st.file_uploader(
