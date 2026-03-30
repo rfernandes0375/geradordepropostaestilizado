@@ -104,6 +104,34 @@ def extrair_conteudo_odt(arquivo_bytes):
              os.unlink(temp_path)
         return None
 
+def extrair_texto_limpo(xml_content):
+    """Extrai apenas o texto legível das tags <text:p> e <text:h> do XML do ODT."""
+    import re
+    # Busca o conteúdo dentro de tags de parágrafo e título
+    texto_p = re.findall(r'<text:[ph][^>]*>(.*?)</text:[ph]>', xml_content)
+    # Junta tudo com quebras de linha para edição
+    return "\n\n".join(texto_p)
+
+def reconstruir_xml_odt(xml_original, texto_editado):
+    """Reconstrói o corpo do XML do ODT mantendo o esqueleto original, mas trocando o texto."""
+    import re
+    # Divide o texto editado em parágrafos
+    paragrafos = texto_editado.split("\n\n")
+    
+    # Cria os novos blocos XML de parágrafo (usando um estilo genérico P1)
+    novas_tags_p = [f'<text:p text:style-name="P1">{p.strip()}</text:p>' for p in paragrafos if p.strip()]
+    corpo_novo = "".join(novas_tags_p)
+    
+    # Encontra o início e fim da parte de texto no XML original do ODT (<office:text>...</office:text>)
+    res = re.search(r'(<office:text[^>]*>).*?(</office:text>)', xml_original, re.DOTALL)
+    if res:
+        tag_inicio = res.group(1)
+        tag_fim = res.group(2)
+        # Substitui todo o conteúdo dentro de <office:text> pelo novo corpo de parágrafos
+        xml_novo = xml_original.replace(res.group(0), f"{tag_inicio}{corpo_novo}{tag_fim}")
+        return xml_novo
+    return xml_original
+
 def obter_proximo_numero(df):
     """Calcula o próximo número de proposta (ex: 852-26 -> 853-26)"""
     if 'Número' not in df.columns or df.empty:
@@ -933,60 +961,96 @@ with tab_geracao:
 
             st.divider()
 
-            if st.button("🚀 Gerar Documento PDF Agora", type="primary", key="generate_pdf_final", use_container_width=True):
-                 pdf_bytes_result = None  
-                 pdf_filename_result = None 
+            # --- NOVO FLUXO: REVISÃO LIMPA VS GERAÇÃO DIRETA ---
+            st.subheader("🛠️ Opções de Geração")
+            revisao_limpa = st.checkbox("📝 Habilitar Revisão no Browser (Editor Limpo - Sem códigos)", value=False, key="check_revisao_limpa")
 
-                 with st.status("⚙️ Iniciando geração da proposta...", expanded=True) as status:
-                    try:
-                        status.update(label="1/4 - Extraindo conteúdo do modelo ODT...")
-                        content_xml = extrair_conteudo_odt(modelo_bytes)
-                        if not content_xml: raise ValueError("Falha ao extrair 'content.xml' do modelo ODT.")
+            if not revisao_limpa:
+                # MODO 1: GERAÇÃO DIRETA (RÁPIDA)
+                if st.button("🚀 Gerar Documento PDF Agora", type="primary", key="generate_pdf_final", use_container_width=True):
+                    pdf_bytes_result = None  
+                    pdf_filename_result = None 
 
-                        status.update(label="2/4 - Aplicando substituições nos dados...")
-                        content_xml_modificado, num_substituicoes = substituir_no_xml(content_xml, substituicoes)
-
-                        status.update(label="3/4 - Recriando arquivo ODT modificado...")
-                        documento_odt_modificado = criar_odt_modificado(modelo_bytes, content_xml_modificado)
-                        if not documento_odt_modificado: raise ValueError("Falha ao recriar o arquivo ODT modificado.")
-
-                        # DEFINIÇÃO DO NOME DO ARQUIVO: JE [Número] - [Cliente]
+                    with st.status("⚙️ Iniciando geração da proposta...", expanded=True) as status:
                         try:
-                            # Pega os valores reais para compor o nome do arquivo
+                            status.update(label="1/4 - Preparando modelo...")
+                            content_xml = extrair_conteudo_odt(modelo_bytes)
+                            content_xml_modificado, _ = substituir_no_xml(content_xml, substituicoes)
+
+                            status.update(label="2/4 - Criando ODT...")
+                            documento_odt_modificado = criar_odt_modificado(modelo_bytes, content_xml_modificado)
+                            
+                            # Define o nome automático JE [Número] - [Cliente]
                             num_doc = substituicoes.get("<Número>", "S-N")
-                            cliente_doc = substituicoes.get("<Cliente>", "Proposta")
-                            # Limpa caracteres que o Windows/Linux não aceitam em nomes de arquivos
-                            cliente_limpo = str(cliente_doc).replace('/', '-').replace('\\', '-').strip()
-                            nome_base_desejado = f"JE {num_doc} - {cliente_limpo}"
-                        except Exception:
-                            # Fallback de segurança
-                            nome_base_desejado = f"Proposta_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                        
-                        nome_arquivo_pdf = f"{nome_base_desejado}.pdf"
+                            cliente_doc = str(substituicoes.get("<Cliente>", "Proposta")).replace('/', '-').replace('\\', '-').strip()
+                            nome_base_desejado = f"JE {num_doc} - {cliente_doc}"
+                            nome_arquivo_pdf = f"{nome_base_desejado}.pdf"
 
-                        status.update(label=f"4/4 - Convertendo para PDF ('{nome_arquivo_pdf}')... (pode levar alguns segundos)")
-                        pdf_bytes = converter_para_pdf(documento_odt_modificado, nome_base_desejado)
-                        if not pdf_bytes: raise ValueError("Falha ao converter o documento ODT para PDF usando LibreOffice.")
+                            status.update(label=f"3/4 - Convertendo para PDF ('{nome_arquivo_pdf}')...")
+                            pdf_bytes = converter_para_pdf(documento_odt_modificado, nome_base_desejado)
 
-                        pdf_bytes_result = pdf_bytes
-                        pdf_filename_result = nome_arquivo_pdf
+                            pdf_bytes_result = pdf_bytes
+                            pdf_filename_result = nome_arquivo_pdf
+                            status.update(label="🎉 Proposta gerada!", state="complete", expanded=False)
 
-                        status.update(label="🎉 Proposta gerada com sucesso!", state="complete", expanded=False)
+                        except Exception as e:
+                            status.update(label=f"❌ Erro: {str(e)}", state="error", expanded=True)
 
-                    except (ValueError, Exception) as e:
-                        status.update(label=f"❌ Erro ao gerar proposta: {str(e)}", state="error", expanded=True)
+                    if pdf_bytes_result and pdf_filename_result:
+                        st.success(f"✅ Documento '{pdf_filename_result}' pronto!") 
+                        st.download_button(label=f"📥 Baixar {pdf_filename_result}", data=pdf_bytes_result, file_name=pdf_filename_result, mime="application/pdf", key="download_pdf_final_btn", use_container_width=True, type="primary")
 
-                 if pdf_bytes_result and pdf_filename_result:
-                      st.success(f"✅ Documento '{pdf_filename_result}' pronto!") 
-                      st.download_button(
-                           label=f"📥 Baixar {pdf_filename_result}",
-                           data=pdf_bytes_result,
-                           file_name=pdf_filename_result,
-                           mime="application/pdf",
-                           key="download_pdf_final_btn", 
-                           use_container_width=True,
-                           type="primary" 
-                      )
+            else:
+                # MODO 2: REVISÃO LIMPA NO BROWSER
+                if 'texto_revisado_limpo' not in st.session_state or st.button("🔄 Reiniciar Rascunho"):
+                    with st.spinner("Preparando texto para revisão..."):
+                        content_xml = extrair_conteudo_odt(modelo_bytes)
+                        content_xml_modificado, _ = substituir_no_xml(content_xml, substituicoes)
+                        # Salva o XML base para remontagem depois
+                        st.session_state['xml_base_puro'] = content_xml_modificado
+                        # Extrai apenas o texto amigável
+                        st.session_state['texto_revisado_limpo'] = extrair_texto_limpo(content_xml_modificado)
+                
+                st.info("🎨 **Editor Direto:** Altere o texto abaixo conforme necessário. O cabeçalho e o logotipo serão mantidos.")
+                
+                # O Editor de Texto Limpo
+                texto_final_editado = st.text_area(
+                    "Conteúdo da Proposta (Texto Limpo):",
+                    value=st.session_state['texto_revisado_limpo'],
+                    height=500,
+                    key="editor_texto_limpo"
+                )
+                
+                if st.button("🚀 Confirmar Edições e Gerar PDF", type="primary", use_container_width=True):
+                    st.session_state['texto_revisado_limpo'] = texto_final_editado
+                    pdf_bytes_result = None  
+                    pdf_filename_result = None 
+
+                    with st.status("⚙️ Reconstruindo documento e convertendo...", expanded=True) as status:
+                        try:
+                            status.update(label="1/3 - Reintegrando texto no modelo...")
+                            xml_final = reconstruir_xml_odt(st.session_state['xml_base_puro'], texto_final_editado)
+                            documento_odt_editado = criar_odt_modificado(modelo_bytes, xml_final)
+                            
+                            # Nome automático
+                            num_doc = substituicoes.get("<Número>", "S-N")
+                            cliente_doc = str(substituicoes.get("<Cliente>", "Proposta")).replace('/', '-').replace('\\', '-').strip()
+                            nome_base_desejado = f"JE {num_doc} - {cliente_doc}"
+                            nome_arquivo_pdf = f"{nome_base_desejado}.pdf"
+
+                            status.update(label=f"2/3 - Convertendo PDF Final...")
+                            pdf_bytes = converter_para_pdf(documento_odt_editado, nome_base_desejado)
+                            
+                            pdf_bytes_result = pdf_bytes
+                            pdf_filename_result = nome_arquivo_pdf
+                            status.update(label="🎉 PDF Gerado com suas edições!", state="complete", expanded=False)
+
+                        except Exception as e:
+                            status.update(label=f"❌ Erro na conversão: {str(e)}", state="error", expanded=True)
+
+                    if pdf_bytes_result and pdf_filename_result:
+                        st.success(f"✅ Documento personalizado pronto!") 
+                        st.download_button(label=f"📥 Baixar {pdf_filename_result}", data=pdf_bytes_result, file_name=pdf_filename_result, mime="application/pdf", key="download_pdf_final_rev", use_container_width=True, type="primary")
 
             st.divider()
 
@@ -1003,6 +1067,8 @@ with tab_geracao:
                       st.session_state['dados_linha_selecionada'] = None
                       st.session_state['modelo_selecionado_nome'] = None
                       if 'last_selected_line' in st.session_state: del st.session_state['last_selected_line'] 
+                      if 'xml_base_puro' in st.session_state: del st.session_state['xml_base_puro']
+                      if 'texto_revisado_limpo' in st.session_state: del st.session_state['texto_revisado_limpo']
                       st.rerun()
 
 st.markdown("---") 
