@@ -789,7 +789,13 @@ with tab_selecao:
                                     with cols[j]:
                                         # Lógica de preenchimento automático de campos
                                         if campo == "Data":
-                                            valor_padrao = datetime.today().strftime("%d/%m/%Y")
+                                            hoje = datetime.today()
+                                            meses = {
+                                                1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
+                                                5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO",
+                                                9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"
+                                            }
+                                            valor_padrao = f"Goiânia, {hoje.day} de {meses[hoje.month]} de {hoje.year}"
                                         elif campo == "Número":
                                             valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
                                         elif campo == "Nome":
