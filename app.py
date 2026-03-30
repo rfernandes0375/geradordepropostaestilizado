@@ -100,16 +100,36 @@ def extrair_conteudo_odt(arquivo_bytes):
         return content_xml
     except Exception as e:
         st.error(f"Erro ao extrair conteúdo do arquivo ODT: {str(e)}")
-        if os.path.exists(temp_path):
+        if 'temp_path' in locals() and os.path.exists(temp_path):
              os.unlink(temp_path)
         return None
-    finally:
-        # Garante que o arquivo temporário seja removido mesmo se ocorrer um erro inesperado antes do unlink
-        if 'temp_path' in locals() and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except OSError:
-                pass # Ignora erros se o arquivo já foi removido
+
+def obter_proximo_numero(df):
+    """Calcula o próximo número de proposta (ex: 852-26 -> 853-26)"""
+    if 'Número' not in df.columns or df.empty:
+        return ""
+    
+    # Pega o último valor não nulo da coluna Número
+    ultimos_nums = df['Número'].dropna().astype(str).tolist()
+    if not ultimos_nums:
+        return ""
+    
+    ultimo_val = ultimos_nums[-1].strip()
+    
+    # Tenta quebrar pelo hífen (formato 852-26)
+    if '-' in ultimo_val:
+        partes = ultimo_val.split('-')
+        try:
+            # Pega apenas os dígitos da primeira parte (ex: 852)
+            num_base_str = re.sub(r'\D', '', partes[0])
+            if num_base_str:
+                num_base = int(num_base_str)
+                sufixo = partes[1]
+                return f"{num_base + 1}-{sufixo}"
+        except:
+            pass
+            
+    return ultimo_val # Fallback se não conseguir processar
 
 def substituir_no_xml(content_xml, substituicoes):
     """Substitui texto no conteúdo XML do arquivo ODT"""
@@ -767,9 +787,22 @@ with tab_selecao:
                                 cols = st.columns(2)
                                 for j, campo in enumerate(todas_colunas[i:i+2]):
                                     with cols[j]:
-                                        # Preenche Data com hoje por padrão
-                                        valor_padrao = datetime.today().strftime("%d/%m/%Y") if campo == "Data" else ""
-                                        dados_novos_row[campo] = st.text_input(campo, value=valor_padrao, key=f"add_{campo}")
+                                        # Lógica de preenchimento automático de campos
+                                        if campo == "Data":
+                                            valor_padrao = datetime.today().strftime("%d/%m/%Y")
+                                        elif campo == "Número":
+                                            valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
+                                        elif campo == "Nome":
+                                            valor_padrao = "" # Fica vazio, mas será gerado no submit se necessário
+                                        else:
+                                            valor_padrao = ""
+                                            
+                                        dados_novos_row[campo] = st.text_input(
+                                            campo, 
+                                            value=valor_padrao, 
+                                            key=f"add_{campo}",
+                                            placeholder="Auto-gerado ao salvar" if campo == "Nome" else ""
+                                        )
                             
                             if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
                                 try:
@@ -777,10 +810,21 @@ with tab_selecao:
                                     df_atualizado = st.session_state['planilha_data'].copy()
                                     nova_linha = {col: "" for col in df_atualizado.columns}
                                     nova_linha.update(dados_novos_row)
+                                    
+                                    # Automação do campo NOME (JE {Número} - {Cliente})
+                                    if 'Número' in nova_linha and 'Cliente' in nova_linha:
+                                        num_final = nova_linha['Número']
+                                        cliente_final = nova_linha['Cliente']
+                                        if num_final and cliente_final:
+                                            # Gera o nome no padrão JE 853-26 - Cliente
+                                            nova_linha['Nome'] = f"JE {num_final} - {cliente_final}"
+                                    
                                     df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
                                     conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                     st.session_state['planilha_data'] = df_atualizado
-                                    st.success("✅ Novo cliente adicionado com sucesso!")
+                                    
+                                    # Após adicionar, o sistema já vai selecionar a nova linha (que é a última)
+                                    st.success(f"✅ Proposta {nova_linha.get('Número')} adicionada com sucesso!")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao adicionar: {e}")
