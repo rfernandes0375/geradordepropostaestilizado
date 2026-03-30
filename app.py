@@ -735,111 +735,87 @@ with tab_selecao:
 
             # --- GERENCIAMENTO DE DADOS GOOGLE SHEETS ---
             if origem_dados == "Google Sheets (Nuvem)" and st.session_state['planilha_data'] is not None:
-                st.markdown("---")
-                with st.expander("📝 Gerenciar Banco de Dados (Nuvem)", expanded=False):
-                    tab_edit, tab_add = st.tabs(["✏️ Editar Selecionada", "➕ Adicionar Nova"])
-                    
-                    # Todas as colunas da planilha carregada
-                    todas_colunas = list(st.session_state['planilha_data'].columns)
-                    
-                    with tab_edit:
-                        if st.session_state['dados_linha_selecionada']:
-                            linha_atual = st.session_state['last_selected_line']
-                            st.write(f"Editando dados da linha **{linha_atual}** — {len(todas_colunas)} campos:")
-                            with st.form("form_edit_sheets"):
-                                novos_dados = {}
-                                # Renderiza em pares de 2 colunas
-                                # A linha_atual entra no key para forçar recriação ao mudar de linha
-                                for i in range(0, len(todas_colunas), 2):
-                                    cols = st.columns(2)
-                                    for j, campo in enumerate(todas_colunas[i:i+2]):
-                                        valor_atual = str(st.session_state['dados_linha_selecionada'].get(campo, ""))
-                                        if valor_atual in ("nan", "None", "NaT"):
-                                            valor_atual = ""
-                                        with cols[j]:
-                                            novos_dados[campo] = st.text_input(
-                                                campo,
-                                                value=valor_atual,
-                                                key=f"edit_{campo}_{linha_atual}"  # key muda com a linha!
-                                            )
-                                
-                                if st.form_submit_button("💾 Salvar Alterações na Nuvem", use_container_width=True):
-                                    try:
-                                        conn = st.connection("gsheets", type=GSheetsConnection)
-                                        df_atualizado = st.session_state['planilha_data'].copy()
-                                        idx = st.session_state['last_selected_line'] - 2
-                                        for key, val in novos_dados.items():
-                                            df_atualizado.at[idx, key] = val
-                                        conn.update(spreadsheet=url_sheets, data=df_atualizado)
-                                        st.session_state['planilha_data'] = df_atualizado
-                                        st.success("✅ Planilha atualizada no Google Sheets!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Erro ao salvar: {e}")
-                        else:
-                            st.info("Selecione uma linha válida para editar.")
-
-                    with tab_add:
-                        st.write(f"Insira os dados para o novo cliente — {len(todas_colunas)} campos:")
-                        with st.form("form_add_sheets"):
-                            dados_novos_row = {}
+                todas_colunas = list(st.session_state['planilha_data'].columns)
+                
+                # QUADRO 1: EDITAR SELECIONADA
+                st.markdown("### ✏️ Editar Proposta Selecionada")
+                with st.container(border=True):
+                    if st.session_state['dados_linha_selecionada']:
+                        linha_atual = st.session_state['last_selected_line']
+                        st.write(f"Editando dados da linha **{linha_atual}** — {len(todas_colunas)} campos:")
+                        with st.form("form_edit_sheets"):
+                            novos_dados = {}
                             for i in range(0, len(todas_colunas), 2):
                                 cols = st.columns(2)
                                 for j, campo in enumerate(todas_colunas[i:i+2]):
                                     with cols[j]:
-                                        # Lógica de preenchimento automático de campos
-                                        if campo == "Data":
-                                            hoje = datetime.today()
-                                            meses = {
-                                                1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
-                                                5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO",
-                                                9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"
-                                            }
-                                            valor_padrao = f"Goiânia, {hoje.day} de {meses[hoje.month]} de {hoje.year}"
-                                        elif campo == "Número":
-                                            valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
-                                        elif campo == "Nome":
-                                            valor_padrao = "" # Campo manual de contato
-                                        else:
-                                            valor_padrao = ""
-                                            
-                                        # Define placeholder informativo para o campo automatizado NOME DO ARQUIVO
-                                        msg_placeholder = ""
-                                        if campo == "NOME DO ARQUIVO":
-                                            msg_placeholder = "Gerado automaticamente (JE + Num + Cliente)"
-                                        
-                                        dados_novos_row[campo] = st.text_input(
-                                            campo, 
-                                            value=valor_padrao, 
-                                            key=f"add_{campo}",
-                                            placeholder=msg_placeholder
+                                        valor_atual = str(st.session_state['dados_linha_selecionada'].get(campo, ""))
+                                        if valor_atual in ("nan", "None", "NaT"):
+                                            valor_atual = ""
+                                        novos_dados[campo] = st.text_input(
+                                            campo,
+                                            value=valor_atual,
+                                            key=f"edit_{campo}_{linha_atual}"
                                         )
                             
-                            if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
+                            if st.form_submit_button("💾 Salvar Alterações na Nuvem", use_container_width=True):
                                 try:
                                     conn = st.connection("gsheets", type=GSheetsConnection)
                                     df_atualizado = st.session_state['planilha_data'].copy()
-                                    nova_linha = {col: "" for col in df_atualizado.columns}
-                                    nova_linha.update(dados_novos_row)
-                                    
-                                    # Automação do campo NOME DO ARQUIVO (JE {Número} - {Cliente})
-                                    if 'Número' in nova_linha and 'Cliente' in nova_linha:
-                                        num_final = nova_linha['Número']
-                                        cliente_final = nova_linha['Cliente']
-                                        if num_final and cliente_final:
-                                            # Preenche a coluna específica NOME DO ARQUIVO
-                                            if 'NOME DO ARQUIVO' in df_atualizado.columns:
-                                                nova_linha['NOME DO ARQUIVO'] = f"JE {num_final} - {cliente_final}"
-                                    
-                                    df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
+                                    idx = st.session_state['last_selected_line'] - 2
+                                    for key, val in novos_dados.items():
+                                        df_atualizado.at[idx, key] = val
                                     conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                     st.session_state['planilha_data'] = df_atualizado
-                                    
-                                    # Após adicionar, o sistema já vai selecionar a nova linha (que é a última)
-                                    st.success(f"✅ Proposta {nova_linha.get('Número')} adicionada com sucesso!")
+                                    st.success("✅ Planilha atualizada no Google Sheets!")
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Erro ao adicionar: {e}")
+                                    st.error(f"Erro ao salvar: {e}")
+                    else:
+                        st.info("💡 Selecione uma linha na tabela acima para habilitar a edição.")
+
+                st.markdown("---")
+                
+                # QUADRO 2: ADICIONAR NOVA
+                st.markdown("### ➕ Adicionar Nova Proposta")
+                with st.container(border=True):
+                    st.write(f"Insira os dados para o novo cliente — {len(todas_colunas)} campos:")
+                    with st.form("form_add_sheets"):
+                        dados_novos_row = {}
+                        for i in range(0, len(todas_colunas), 2):
+                            cols = st.columns(2)
+                            for j, campo in enumerate(todas_colunas[i:i+2]):
+                                with cols[j]:
+                                    if campo == "Data":
+                                        hoje = datetime.today()
+                                        meses = {1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"}
+                                        valor_padrao = f"Goiânia, {hoje.day} de {meses[hoje.month]} de {hoje.year}"
+                                    elif campo == "Número":
+                                        valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
+                                    else:
+                                        valor_padrao = ""
+                                    
+                                    msg_placeholder = "Gerado automaticamente" if campo == "NOME DO ARQUIVO" else ""
+                                    dados_novos_row[campo] = st.text_input(campo, value=valor_padrao, key=f"add_{campo}", placeholder=msg_placeholder)
+                        
+                        if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
+                            try:
+                                conn = st.connection("gsheets", type=GSheetsConnection)
+                                df_atualizado = st.session_state['planilha_data'].copy()
+                                nova_linha = {col: "" for col in df_atualizado.columns}
+                                nova_linha.update(dados_novos_row)
+                                
+                                if 'Número' in nova_linha and 'Cliente' in nova_linha:
+                                    if 'NOME DO ARQUIVO' in df_atualizado.columns:
+                                        nova_linha['NOME DO ARQUIVO'] = f"JE {nova_linha['Número']} - {nova_linha['Cliente']}"
+                                
+                                df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
+                                conn.update(spreadsheet=url_sheets, data=df_atualizado)
+                                st.session_state['planilha_data'] = df_atualizado
+                                st.success(f"✅ Proposta {nova_linha.get('Número')} adicionada com sucesso!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao adicionar: {e}")
 
 
         with col_modelo:
