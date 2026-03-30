@@ -587,13 +587,15 @@ with tab_upload:
                     # O usuário precisará fornecer a URL ou configurar no secrets
                     # Endereço padrão da planilha fornecido pelo usuário
                     url_sheets_default = "https://docs.google.com/spreadsheets/d/1CkllnC9xWKzZEnB_bKFRuNY5dsu1FoGRF5phdHirjbs/edit#gid=465824771"
-                    url_sheets = st.text_input("Link da Planilha Google:", value=url_sheets_default, placeholder="https://docs.google.com/spreadsheets/d/...")
                     
-                    col_refresh, _ = st.columns([1, 2])
-                    with col_refresh:
-                        if st.button("🔄 Atualizar Dados", use_container_width=True):
-                            st.cache_data.clear() # Limpa qualquer cache residual
-                            st.rerun()
+                    with st.expander("🔗 Configurar Link da Planilha", expanded=False):
+                        url_sheets = st.text_input("Link da Planilha Google:", value=url_sheets_default, placeholder="https://docs.google.com/spreadsheets/d/...")
+                        
+                        col_refresh, _ = st.columns([1, 2])
+                        with col_refresh:
+                            if st.button("🔄 Atualizar Dados", use_container_width=True):
+                                st.cache_data.clear() # Limpa qualquer cache residual
+                                st.rerun()
 
                     if url_sheets:
                         # ttl=0 desativa o cache de 10 minutos para atualizações instantâneas
@@ -638,7 +640,10 @@ with tab_upload:
                 st.info("📂 Buscando modelos no Google Drive...")
                 # ID padrão da pasta fornecido pelo usuário
                 folder_id_default = "1daF_KyzA1te7cMFBuKJaAzvYxX7D7gKu"
-                folder_id = st.text_input("ID da Pasta no Drive:", value=folder_id_default, placeholder="1A2B3... (final da URL da pasta)")
+                
+                with st.expander("📂 Configurar Pasta de Modelos", expanded=False):
+                    folder_id = st.text_input("ID da Pasta no Drive:", value=folder_id_default, placeholder="1A2B3... (final da URL da pasta)")
+                
                 if folder_id:
                     modelos_drive = listar_modelos_google_drive(folder_id)
                     if modelos_drive:
