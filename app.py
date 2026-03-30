@@ -107,28 +107,45 @@ def extrair_conteudo_odt(arquivo_bytes):
 def extrair_texto_limpo(xml_content):
     """Extrai apenas o texto legível das tags <text:p> e <text:h> do XML do ODT."""
     import re
-    # Busca o conteúdo dentro de tags de parágrafo e título
-    texto_p = re.findall(r'<text:[ph][^>]*>(.*?)</text:[ph]>', xml_content)
-    # Junta tudo com quebras de linha para edição
-    return "\n\n".join(texto_p)
+    # Busca o conteúdo dentro de tags de parágrafo e título, ignorando sub-tags XML internas
+    # Usamos uma regex que remove tags internas para mostrar apenas o texto puro ao usuário
+    texto_p = re.findall(r'<text:[ph][^>]*>(.*?)</text:[ph]>', xml_content, re.DOTALL)
+    
+    limpo = []
+    for p in texto_p:
+        # Remove tags internas residuais como <text:span> etc
+        p_limpo = re.sub(r'<[^>]+>', '', p)
+        if p_limpo.strip():
+            limpo.append(p_limpo.strip())
+            
+    return "\n\n".join(limpo)
 
 def reconstruir_xml_odt(xml_original, texto_editado):
     """Reconstrói o corpo do XML do ODT mantendo o esqueleto original, mas trocando o texto."""
     import re
+    import html
+    
+    # Escapa caracteres especiais para não quebrar o XML (ex: & -> &amp;)
+    texto_escapado = html.escape(texto_editado)
+    
     # Divide o texto editado em parágrafos
-    paragrafos = texto_editado.split("\n\n")
+    paragrafos = texto_escapado.split("\n\n")
     
     # Cria os novos blocos XML de parágrafo (usando um estilo genérico P1)
+    # Importante: ODT espera que o texto esteja bem envelopado
     novas_tags_p = [f'<text:p text:style-name="P1">{p.strip()}</text:p>' for p in paragrafos if p.strip()]
     corpo_novo = "".join(novas_tags_p)
     
     # Encontra o início e fim da parte de texto no XML original do ODT (<office:text>...</office:text>)
-    res = re.search(r'(<office:text[^>]*>).*?(</office:text>)', xml_original, re.DOTALL)
+    # O ODT pode ter sequências complexas, tentamos ser o mais conservadores possível
+    padrao = r'(<office:text[^>]*>).*?(</office:text>)'
+    res = re.search(padrao, xml_original, re.DOTALL)
     if res:
         tag_inicio = res.group(1)
         tag_fim = res.group(2)
         # Substitui todo o conteúdo dentro de <office:text> pelo novo corpo de parágrafos
-        xml_novo = xml_original.replace(res.group(0), f"{tag_inicio}{corpo_novo}{tag_fim}")
+        # Nota: Isso remove Tabelas se houver, mas garante um arquivo ODT válido para parágrafos.
+        xml_novo = xml_original[:res.start()] + f"{tag_inicio}{corpo_novo}{tag_fim}" + xml_original[res.end():]
         return xml_novo
     return xml_original
 
