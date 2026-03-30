@@ -944,19 +944,17 @@ with tab_geracao:
                         documento_odt_modificado = criar_odt_modificado(modelo_bytes, content_xml_modificado)
                         if not documento_odt_modificado: raise ValueError("Falha ao recriar o arquivo ODT modificado.")
 
-                        # AQUI ESTÁ A IMPLEMENTAÇÃO DO NOME DA ÚLTIMA COLUNA
+                        # DEFINIÇÃO DO NOME DO ARQUIVO: JE [Número] - [Cliente]
                         try:
-                            # Pega todos os nomes das colunas da planilha
-                            colunas = list(st.session_state['planilha_data'].columns)
-                            ultima_coluna = colunas[-1]
-                            # Pega o valor da ultima coluna
-                            nome_base_desejado = dados_linha.get(ultima_coluna, "")
-                            if not nome_base_desejado or pd.isna(nome_base_desejado):
-                                nome_cliente = str(dados_linha.get('Cliente', 'Proposta')).replace(' ', '_').replace('/','-')
-                                nome_base_desejado = f"Proposta_{nome_cliente}_{datetime.now().strftime('%Y%m%d')}"
+                            # Pega os valores reais para compor o nome do arquivo
+                            num_doc = substituicoes.get("<Número>", "S-N")
+                            cliente_doc = substituicoes.get("<Cliente>", "Proposta")
+                            # Limpa caracteres que o Windows/Linux não aceitam em nomes de arquivos
+                            cliente_limpo = str(cliente_doc).replace('/', '-').replace('\\', '-').strip()
+                            nome_base_desejado = f"JE {num_doc} - {cliente_limpo}"
                         except Exception:
-                            # Fallback original
-                            nome_base_desejado = dados_linha.get("NOME DO ARQUIVO", "Proposta_Gerada")
+                            # Fallback de segurança
+                            nome_base_desejado = f"Proposta_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                         
                         nome_arquivo_pdf = f"{nome_base_desejado}.pdf"
 
