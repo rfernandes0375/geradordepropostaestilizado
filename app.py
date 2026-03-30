@@ -586,8 +586,16 @@ with tab_upload:
                     conn = st.connection("gsheets", type=GSheetsConnection)
                     # O usuário precisará fornecer a URL ou configurar no secrets
                     url_sheets = st.text_input("Cole o link da sua Planilha Google:", placeholder="https://docs.google.com/spreadsheets/d/...")
+                    
+                    col_refresh, _ = st.columns([1, 2])
+                    with col_refresh:
+                        if st.button("🔄 Atualizar Dados", use_container_width=True):
+                            st.cache_data.clear() # Limpa qualquer cache residual
+                            st.rerun()
+
                     if url_sheets:
-                        df = conn.read(spreadsheet=url_sheets)
+                        # ttl=0 desativa o cache de 10 minutos para atualizações instantâneas
+                        df = conn.read(spreadsheet=url_sheets, ttl=0)
                         st.session_state['planilha_data'] = df
                         st.session_state['planilha_nome'] = "Google Sheets"
                         st.success("✅ Dados carregados da nuvem!")
