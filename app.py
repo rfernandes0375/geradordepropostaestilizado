@@ -799,15 +799,20 @@ with tab_selecao:
                                         elif campo == "Número":
                                             valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
                                         elif campo == "Nome":
-                                            valor_padrao = "" # Fica vazio, mas será gerado no submit se necessário
+                                            valor_padrao = "" # Campo manual de contato
                                         else:
                                             valor_padrao = ""
                                             
+                                        # Define placeholder informativo para o campo automatizado NOME DO ARQUIVO
+                                        msg_placeholder = ""
+                                        if campo == "NOME DO ARQUIVO":
+                                            msg_placeholder = "Gerado automaticamente (JE + Num + Cliente)"
+                                        
                                         dados_novos_row[campo] = st.text_input(
                                             campo, 
                                             value=valor_padrao, 
                                             key=f"add_{campo}",
-                                            placeholder="Auto-gerado ao salvar" if campo == "Nome" else ""
+                                            placeholder=msg_placeholder
                                         )
                             
                             if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
