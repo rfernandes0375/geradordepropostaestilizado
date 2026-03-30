@@ -817,13 +817,14 @@ with tab_selecao:
                                     nova_linha = {col: "" for col in df_atualizado.columns}
                                     nova_linha.update(dados_novos_row)
                                     
-                                    # Automação do campo NOME (JE {Número} - {Cliente})
+                                    # Automação do campo NOME DO ARQUIVO (JE {Número} - {Cliente})
                                     if 'Número' in nova_linha and 'Cliente' in nova_linha:
                                         num_final = nova_linha['Número']
                                         cliente_final = nova_linha['Cliente']
                                         if num_final and cliente_final:
-                                            # Gera o nome no padrão JE 853-26 - Cliente
-                                            nova_linha['Nome'] = f"JE {num_final} - {cliente_final}"
+                                            # Preenche a coluna específica NOME DO ARQUIVO
+                                            if 'NOME DO ARQUIVO' in df_atualizado.columns:
+                                                nova_linha['NOME DO ARQUIVO'] = f"JE {num_final} - {cliente_final}"
                                     
                                     df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
                                     conn.update(spreadsheet=url_sheets, data=df_atualizado)
