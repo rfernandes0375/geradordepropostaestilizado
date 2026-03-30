@@ -600,7 +600,16 @@ with tab_upload:
                         df = conn.read(spreadsheet=url_sheets, ttl=0)
                         st.session_state['planilha_data'] = df
                         st.session_state['planilha_nome'] = "Google Sheets"
-                        # st.success("✅ Dados carregados da nuvem!") # Removido para limpar a UI
+
+                        # Identifica a última linha preenchida na coluna 'Cliente'
+                        if 'Cliente' in df.columns:
+                            # Filtra linhas onde 'Cliente' não é nulo nem vazio
+                            linhas_preenchidas = df[df['Cliente'].notna() & (df['Cliente'].astype(str).str.strip() != "")].index
+                            if not linhas_preenchidas.empty:
+                                # Define a última linha como padrão (Índice + 2 para bater com o número da linha no Excel/Sheets)
+                                st.session_state['last_selected_line'] = int(linhas_preenchidas[-1]) + 2
+                            else:
+                                st.session_state['last_selected_line'] = 2
                 except Exception as e:
                     if "not found" in str(e).lower():
                         st.error("❌ Planilha não encontrada. Verifique se o link está correto e se você compartilhou com o e-mail da Service Account.")
