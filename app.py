@@ -585,7 +585,9 @@ with tab_upload:
                     # Tenta conectar via Streamlit GSheets Connection
                     conn = st.connection("gsheets", type=GSheetsConnection)
                     # O usuário precisará fornecer a URL ou configurar no secrets
-                    url_sheets = st.text_input("Cole o link da sua Planilha Google:", placeholder="https://docs.google.com/spreadsheets/d/...")
+                    # Endereço padrão da planilha fornecido pelo usuário
+                    url_sheets_default = "https://docs.google.com/spreadsheets/d/1CkllnC9xWKzZEnB_bKFRuNY5dsu1FoGRF5phdHirjbs/edit#gid=465824771"
+                    url_sheets = st.text_input("Link da Planilha Google:", value=url_sheets_default, placeholder="https://docs.google.com/spreadsheets/d/...")
                     
                     col_refresh, _ = st.columns([1, 2])
                     with col_refresh:
@@ -598,7 +600,7 @@ with tab_upload:
                         df = conn.read(spreadsheet=url_sheets, ttl=0)
                         st.session_state['planilha_data'] = df
                         st.session_state['planilha_nome'] = "Google Sheets"
-                        st.success("✅ Dados carregados da nuvem!")
+                        # st.success("✅ Dados carregados da nuvem!") # Removido para limpar a UI
                 except Exception as e:
                     if "not found" in str(e).lower():
                         st.error("❌ Planilha não encontrada. Verifique se o link está correto e se você compartilhou com o e-mail da Service Account.")
@@ -610,7 +612,7 @@ with tab_upload:
     with col_meta2:
         with st.container(border=True):
             st.subheader("📄 Modelos de Proposta")
-            origem_modelos = st.radio("Origem dos Modelos:", ["Upload Manual", "Google Drive"], horizontal=True, key="origem_modelos")
+            origem_modelos = st.radio("Origem dos Modelos:", ["Upload Manual", "Google Drive"], horizontal=True, key="origem_modelos", index=1) # Google Drive como padrão
             
             if origem_modelos == "Upload Manual":
                 arquivos_modelo = st.file_uploader(
@@ -625,7 +627,9 @@ with tab_upload:
                      st.success(f"✅ {len(arquivos_modelo)} modelos carregados.")
             else:
                 st.info("📂 Buscando modelos no Google Drive...")
-                folder_id = st.text_input("ID da Pasta no Drive:", placeholder="1A2B3... (final da URL da pasta)")
+                # ID padrão da pasta fornecido pelo usuário
+                folder_id_default = "1daF_KyzA1te7cMFBuKJaAzvYxX7D7gKu"
+                folder_id = st.text_input("ID da Pasta no Drive:", value=folder_id_default, placeholder="1A2B3... (final da URL da pasta)")
                 if folder_id:
                     modelos_drive = listar_modelos_google_drive(folder_id)
                     if modelos_drive:
