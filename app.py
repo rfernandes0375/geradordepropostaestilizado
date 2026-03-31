@@ -66,7 +66,7 @@ def listar_modelos_google_drive(folder_id):
         f"name contains '.odt'"
         f")"
     )
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
     # Filtra apenas arquivos .odt pelo nome
     todos = results.get('files', [])
     return [f for f in todos if f['name'].lower().endswith('.odt')]
@@ -668,8 +668,9 @@ with tab_upload:
                     modelos_drive = listar_modelos_google_drive(folder_id)
                     if modelos_drive:
                         st.success(f"✅ {len(modelos_drive)} modelos encontrados no Drive!")
-                        # Armazenamos apenas os IDs, baixaremos sob demanda no Passo 3
+                        # Armazenamos os IDs e os Links de Visualização
                         st.session_state['modelos_drive_info'] = {m['name']: m['id'] for m in modelos_drive}
+                        st.session_state['modelos_drive_links'] = {m['name']: m['webViewLink'] for m in modelos_drive}
                         # Para compatibilidade com o resto do código, inicializamos o dicionário de bytes
                         st.session_state['modelos_info'] = {m['name']: None for m in modelos_drive} 
                     else:
@@ -853,10 +854,11 @@ with tab_selecao:
                   with col_m2:
                        st.write("") # alinhamento
                        st.write("") 
-                       # Link para editar modelo no Google Docs (se vier do Drive)
-                       if 'modelos_drive_info' in st.session_state and modelo_selecionado in st.session_state['modelos_drive_info']:
-                           file_id = st.session_state['modelos_drive_info'][modelo_selecionado]
-                           edit_url = f"https://docs.google.com/document/d/{file_id}/edit"
+                       # Link para visualizar/editar modelo no Google Drive
+                       if 'modelos_drive_links' in st.session_state and modelo_selecionado in st.session_state['modelos_drive_links']:
+                           # Substitui a parte da URL para forçar a abertura no editor do Drive
+                           base_url = st.session_state['modelos_drive_links'][modelo_selecionado]
+                           edit_url = base_url.replace("/document/d/", "/file/d/").replace("/view", "/view?usp=drivesdk")
                            st.markdown(f"""
                                <a href='{edit_url}' target='_blank' style='text-decoration: none;'>
                                    <button style='background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 12px; padding: 10px 15px; cursor: pointer; font-size: 0.9rem; width: 100%; font-weight: 600;'>
