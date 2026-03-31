@@ -53,37 +53,49 @@ def get_google_drive_service():
     return None
 
 def listar_modelos_google_drive(folder_id):
-    """Lista arquivos ODT em uma pasta específica do Drive"""
+    """Lista arquivos ODT e Documentos Google em uma pasta específica do Drive"""
     service = get_google_drive_service()
     if not service:
         return []
     
-    # Busca por ODT com múltiplos MIME types possíveis (arquivos ODT podem ter tipos diferentes no Drive)
+    # Busca por ODT e Documentos Google
     query = (
         f"'{folder_id}' in parents and trashed=false and ("
         f"mimeType='application/vnd.oasis.opendocument.text' or "
+        f"mimeType='application/vnd.google-apps.document' or "
         f"mimeType='application/octet-stream' or "
         f"name contains '.odt'"
         f")"
     )
-    results = service.files().list(q=query, fields="files(id, name, webViewLink)").execute()
-    # Filtra apenas arquivos .odt pelo nome
+    # Incluímos mimeType nos campos retornados
+    results = service.files().list(q=query, fields="files(id, name, webViewLink, mimeType)").execute()
+    
     todos = results.get('files', [])
-    return [f for f in todos if f['name'].lower().endswith('.odt')]
+    # Filtra apenas arquivos .odt ou Documentos Google nativos
+    return [f for f in todos if f['name'].lower().endswith('.odt') or f['mimeType'] == 'application/vnd.google-apps.document']
 
-def baixar_arquivo_drive(file_id):
-    """Baixa um arquivo do Drive em memória"""
+def baixar_arquivo_drive(file_id, mime_type=None):
+    """Baixa um arquivo do Drive em memória (ou exporta se for Doc Google)新闻网"""
     service = get_google_drive_service()
     if not service:
         return None
     
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while done is False:
-        status, done = downloader.next_chunk()
-    return fh.getvalue()
+    try:
+        if mime_type == 'application/vnd.google-apps.document':
+            # Se for Doc Google, exportamos para ODT e retornamos os bytes diretamente
+            return service.files().export(fileId=file_id, mimeType='application/vnd.oasis.opendocument.text').execute()
+        else:
+            # Se for binário (ODT), baixamos usando MediaIoBaseDownload
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            return fh.getvalue()
+    except Exception as e:
+        st.error(f"❌ Erro ao baixar/exportar arquivo do Drive: {e}")
+        return None
 
 # --- FUNÇÕES AUXILIARES (Mantidas exatamente como no original) ---
 
@@ -668,8 +680,8 @@ with tab_upload:
                     modelos_drive = listar_modelos_google_drive(folder_id)
                     if modelos_drive:
                         st.success(f"✅ {len(modelos_drive)} modelos encontrados no Drive!")
-                        # Armazenamos os IDs e os Links de Visualização
-                        st.session_state['modelos_drive_info'] = {m['name']: m['id'] for m in modelos_drive}
+                        # Armazenamos os IDs, Links e MIME types
+                        st.session_state['modelos_drive_info'] = {m['name']: {'id': m['id'], 'mimeType': m['mimeType']} for m in modelos_drive}
                         st.session_state['modelos_drive_links'] = {m['name']: m['webViewLink'] for m in modelos_drive}
                         # Para compatibilidade com o resto do código, inicializamos o dicionário de bytes
                         st.session_state['modelos_info'] = {m['name']: None for m in modelos_drive} 
@@ -856,16 +868,22 @@ with tab_selecao:
                        st.write("") 
                        # Link para visualizar/editar modelo no Google Drive
                        if 'modelos_drive_links' in st.session_state and modelo_selecionado in st.session_state['modelos_drive_links']:
-                           # Substitui a parte da URL para forçar a abertura no editor do Drive
-                           base_url = st.session_state['modelos_drive_links'][modelo_selecionado]
-                           edit_url = base_url.replace("/document/d/", "/file/d/").replace("/view", "/view?usp=drivesdk")
-                           st.markdown(f"""
-                               <a href='{edit_url}' target='_blank' style='text-decoration: none;'>
-                                   <button style='background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 12px; padding: 10px 15px; cursor: pointer; font-size: 0.9rem; width: 100%; font-weight: 600;'>
-                                       ✏️ Editar ODT
-                                   </button>
-                               </a>
-                           """, unsafe_allow_html=True)
+                            base_url = st.session_state['modelos_drive_links'][modelo_selecionado]
+                            file_info = st.session_state['modelos_drive_info'].get(modelo_selecionado, {})
+                            is_gdoc = file_info.get('mimeType') == 'application/vnd.google-apps.document'
+                            
+                            # Se for Doc Google, o link já é o editor. Se for ODT, tentamos forçar a visualização que permite abrir com Doc Google.
+                            edit_url = base_url if is_gdoc else base_url.replace("/view", "/edit")
+                            
+                            label_btn = "✏️ Abrir Documento Google" if is_gdoc else "✏️ Editar Modelo (Drive)"
+                            
+                            st.markdown(f"""
+                                <a href='{edit_url}' target='_blank' style='text-decoration: none;'>
+                                    <button style='background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 12px; padding: 10px 15px; cursor: pointer; font-size: 0.9rem; width: 100%; font-weight: 600;'>
+                                        {label_btn}
+                                    </button>
+                                </a>
+                            """, unsafe_allow_html=True)
                  
                   st.info(f"📄 Modelo selecionado: **{modelo_selecionado}**")
              else:
@@ -908,10 +926,12 @@ with tab_geracao:
         
         # Se não tiver em memória (bytes), tenta baixar do Drive se for o caso
         if modelo_bytes is None and 'modelos_drive_info' in st.session_state:
-            file_id = st.session_state['modelos_drive_info'].get(nome_modelo_selecionado)
-            if file_id:
+            file_info = st.session_state['modelos_drive_info'].get(nome_modelo_selecionado)
+            if file_info:
+                file_id = file_info['id']
+                mime_type = file_info.get('mimeType')
                 with st.spinner(f"📥 Baixando '{nome_modelo_selecionado}' do Google Drive..."):
-                    modelo_bytes = baixar_arquivo_drive(file_id)
+                    modelo_bytes = baixar_arquivo_drive(file_id, mime_type)
                     if modelo_bytes:
                         st.session_state['modelos_info'][nome_modelo_selecionado] = modelo_bytes
 
