@@ -321,7 +321,7 @@ def criar_substituicoes(dados):
         "<Email>": "Email", "<Modelo>": "Modelo", "<TIPO DE MÁQUINA>": "TIPO DE MÁQUINA",
         "<MODELO DE MÁQUINA>": "MODELO DE MÁQUINA", "<Valor Rompedor>": "Valor Rompedor",
         "<Valor Kit>": "Valor Kit", "<Condição de pagamento>": "Condição de pagamento",
-        "<FRETE>": "FRETE", "<Data>": "Data"
+        "<FRETE>": "FRETE", "<Data>": "Data", "<Observações>": "Observações"
     }
 
     for placeholder, coluna in mapeamento_placeholders.items():
@@ -703,9 +703,10 @@ with tab_selecao:
 
         st.divider()
 
-        col_linha, col_modelo = st.columns(2)
+        # Novo Layout Lado a Lado: Seleção (Esquerda) e Gerenciamento (Direita)
+        col_selecao, col_gerenciamento = st.columns([0.35, 0.65], gap="large")
 
-        with col_linha:
+        with col_selecao:
             with st.container(border=True):
                 st.subheader("Selecione a Linha da Planilha")
                 st.caption("Escolha a linha que contém os dados para esta proposta específica.")
@@ -733,10 +734,11 @@ with tab_selecao:
                      st.error(f"❌ Linha {linha_selecionada_usuario} inválida. Selecione um valor entre 2 e {len(df) + 1}.")
                      st.session_state['dados_linha_selecionada'] = None 
 
+        with col_gerenciamento:
             # --- GERENCIAMENTO DE DADOS GOOGLE SHEETS ---
             if origem_dados == "Google Sheets (Nuvem)" and st.session_state['planilha_data'] is not None:
-                st.markdown("---")
-                with st.expander("📝 Gerenciar Banco de Dados (Nuvem)", expanded=False):
+                with st.container(border=True):
+                    st.subheader("📝 Gerenciar Banco de Dados")
                     tab_edit, tab_add = st.tabs(["✏️ Editar Selecionada", "➕ Adicionar Nova"])
                     
                     # Todas as colunas da planilha carregada
@@ -745,22 +747,21 @@ with tab_selecao:
                     with tab_edit:
                         if st.session_state['dados_linha_selecionada']:
                             linha_atual = st.session_state['last_selected_line']
-                            st.write(f"Editando dados da linha **{linha_atual}** — {len(todas_colunas)} campos:")
+                            st.write(f"Editando dados da linha **{linha_atual}**:")
                             with st.form("form_edit_sheets"):
                                 novos_dados = {}
                                 # Renderiza em pares de 2 colunas
-                                # A linha_atual entra no key para forçar recriação ao mudar de linha
                                 for i in range(0, len(todas_colunas), 2):
-                                    cols = st.columns(2)
+                                    cols_f = st.columns(2)
                                     for j, campo in enumerate(todas_colunas[i:i+2]):
                                         valor_atual = str(st.session_state['dados_linha_selecionada'].get(campo, ""))
                                         if valor_atual in ("nan", "None", "NaT"):
                                             valor_atual = ""
-                                        with cols[j]:
+                                        with cols_f[j]:
                                             novos_dados[campo] = st.text_input(
                                                 campo,
                                                 value=valor_atual,
-                                                key=f"edit_{campo}_{linha_atual}"  # key muda com a linha!
+                                                key=f"edit_{campo}_{linha_atual}"
                                             )
                                 
                                 if st.form_submit_button("💾 Salvar Alterações na Nuvem", use_container_width=True):
@@ -768,52 +769,44 @@ with tab_selecao:
                                         conn = st.connection("gsheets", type=GSheetsConnection)
                                         df_atualizado = st.session_state['planilha_data'].copy()
                                         idx = st.session_state['last_selected_line'] - 2
+                                        
+                                        # Automação do campo NOME DO ARQUIVO no Edit
+                                        if 'Número' in novos_dados and 'Cliente' in novos_dados:
+                                            num_f = novos_dados['Número']
+                                            cli_f = novos_dados['Cliente']
+                                            if num_f and cli_f:
+                                                 if 'NOME DO ARQUIVO' in df_atualizado.columns:
+                                                     novos_dados['NOME DO ARQUIVO'] = f"JE {num_f} - {cli_f}"
+
                                         for key, val in novos_dados.items():
                                             df_atualizado.at[idx, key] = val
                                         conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                         st.session_state['planilha_data'] = df_atualizado
-                                        st.success("✅ Planilha atualizada no Google Sheets!")
+                                        st.success("✅ Planilha atualizada!")
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro ao salvar: {e}")
                         else:
-                            st.info("Selecione uma linha válida para editar.")
+                            st.info("Selecione uma linha à esquerda para editar.")
 
                     with tab_add:
-                        st.write(f"Insira os dados para o novo cliente — {len(todas_colunas)} campos:")
+                        st.write(f"Novo cliente:")
                         with st.form("form_add_sheets"):
                             dados_novos_row = {}
                             for i in range(0, len(todas_colunas), 2):
-                                cols = st.columns(2)
+                                cols_f = st.columns(2)
                                 for j, campo in enumerate(todas_colunas[i:i+2]):
-                                    with cols[j]:
-                                        # Lógica de preenchimento automático de campos
+                                    with cols_f[j]:
                                         if campo == "Data":
                                             hoje = datetime.today()
-                                            meses = {
-                                                1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL",
-                                                5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO",
-                                                9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"
-                                            }
+                                            meses = {1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"}
                                             valor_padrao = f"Goiânia, {hoje.day} de {meses[hoje.month]} de {hoje.year}"
                                         elif campo == "Número":
                                             valor_padrao = obter_proximo_numero(st.session_state['planilha_data'])
-                                        elif campo == "Nome":
-                                            valor_padrao = "" # Campo manual de contato
                                         else:
                                             valor_padrao = ""
                                             
-                                        # Define placeholder informativo para o campo automatizado NOME DO ARQUIVO
-                                        msg_placeholder = ""
-                                        if campo == "NOME DO ARQUIVO":
-                                            msg_placeholder = "Gerado automaticamente (JE + Num + Cliente)"
-                                        
-                                        dados_novos_row[campo] = st.text_input(
-                                            campo, 
-                                            value=valor_padrao, 
-                                            key=f"add_{campo}",
-                                            placeholder=msg_placeholder
-                                        )
+                                        dados_novos_row[campo] = st.text_input(campo, value=valor_padrao, key=f"add_{campo}")
                             
                             if st.form_submit_button("➕ Adicionar à Planilha", use_container_width=True):
                                 try:
@@ -822,44 +815,60 @@ with tab_selecao:
                                     nova_linha = {col: "" for col in df_atualizado.columns}
                                     nova_linha.update(dados_novos_row)
                                     
-                                    # Automação do campo NOME DO ARQUIVO (JE {Número} - {Cliente})
                                     if 'Número' in nova_linha and 'Cliente' in nova_linha:
-                                        num_final = nova_linha['Número']
-                                        cliente_final = nova_linha['Cliente']
-                                        if num_final and cliente_final:
-                                            # Preenche a coluna específica NOME DO ARQUIVO
-                                            if 'NOME DO ARQUIVO' in df_atualizado.columns:
-                                                nova_linha['NOME DO ARQUIVO'] = f"JE {num_final} - {cliente_final}"
+                                        num_f = nova_linha['Número']
+                                        cli_f = nova_linha['Cliente']
+                                        if num_f and cli_f and 'NOME DO ARQUIVO' in df_atualizado.columns:
+                                            nova_linha['NOME DO ARQUIVO'] = f"JE {num_f} - {cli_f}"
                                     
                                     df_atualizado = pd.concat([df_atualizado, pd.DataFrame([nova_linha])], ignore_index=True)
                                     conn.update(spreadsheet=url_sheets, data=df_atualizado)
                                     st.session_state['planilha_data'] = df_atualizado
-                                    
-                                    # Após adicionar, o sistema já vai selecionar a nova linha (que é a última)
-                                    st.success(f"✅ Proposta {nova_linha.get('Número')} adicionada com sucesso!")
+                                    st.success(f"✅ Proposta adicionada!")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao adicionar: {e}")
+            else:
+                 st.info("💡 Carregue dados do Google Sheets no Passo 1 para gerenciar o banco aqui.")
 
+        st.divider()
+        
+        # Seleção de Modelo ODT
+        with st.container(border=True):
+             st.subheader("📄 Selecione o Modelo ODT")
+             st.caption("Escolha qual modelo ODT será usado para esta proposta.")
+             nomes_modelos = list(st.session_state['modelos_info'].keys())
 
-        with col_modelo:
-             with st.container(border=True):
-                 st.subheader("Selecione o Modelo ODT")
-                 st.caption("Escolha qual modelo ODT será usado para esta proposta.")
-                 nomes_modelos = list(st.session_state['modelos_info'].keys())
-
-                 if nomes_modelos:
-                      modelo_selecionado = st.selectbox(
+             if nomes_modelos:
+                  col_m1, col_m2 = st.columns([0.7, 0.3])
+                  with col_m1:
+                       modelo_selecionado = st.selectbox(
                            "Modelos Disponíveis:",
                            options=nomes_modelos,
                            index=nomes_modelos.index(st.session_state.get('modelo_selecionado_nome', nomes_modelos[0])) if st.session_state.get('modelo_selecionado_nome') in nomes_modelos else 0,
                            key="modelo_select_widget"
-                      )
-                      st.session_state['modelo_selecionado_nome'] = modelo_selecionado
-                      st.info(f"📄 Modelo selecionado: **{modelo_selecionado}**")
-                 else:
-                      st.error("Nenhum modelo ODT encontrado. Volte ao Passo 1.")
-                      st.session_state['modelo_selecionado_nome'] = None
+                       )
+                       st.session_state['modelo_selecionado_nome'] = modelo_selecionado
+                  
+                  with col_m2:
+                       st.write("") # alinhamento
+                       st.write("") 
+                       # Link para editar modelo no Google Docs (se vier do Drive)
+                       if 'modelos_drive_info' in st.session_state and modelo_selecionado in st.session_state['modelos_drive_info']:
+                           file_id = st.session_state['modelos_drive_info'][modelo_selecionado]
+                           edit_url = f"https://docs.google.com/document/d/{file_id}/edit"
+                           st.markdown(f"""
+                               <a href='{edit_url}' target='_blank' style='text-decoration: none;'>
+                                   <button style='background-color: white; border: 1px solid #2563eb; color: #2563eb; border-radius: 12px; padding: 10px 15px; cursor: pointer; font-size: 0.9rem; width: 100%; font-weight: 600;'>
+                                       ✏️ Editar ODT
+                                   </button>
+                               </a>
+                           """, unsafe_allow_html=True)
+                 
+                  st.info(f"📄 Modelo selecionado: **{modelo_selecionado}**")
+             else:
+                  st.error("Nenhum modelo ODT encontrado. Volte ao Passo 1.")
+                  st.session_state['modelo_selecionado_nome'] = None
 
         st.divider()
 
@@ -914,15 +923,38 @@ with tab_geracao:
                 col_rev1, col_rev2 = st.columns(2)
                 with col_rev1:
                      st.markdown("**Cliente e Contato:**")
-                     st.text_input("Cliente:", value=substituicoes.get("<Cliente>", ""), disabled=True, key=f"rev_cliente_{st.session_state.get('last_selected_line', 2)}")
-                     st.text_input("Contato (Nome):", value=substituicoes.get("<Nome>", ""), disabled=True, key=f"rev_nome_{st.session_state.get('last_selected_line', 2)}")
-                     st.text_input("Local:", value=f"{substituicoes.get('<Cidade>', '')}/{substituicoes.get('<Estado>', '')}", disabled=True, key=f"rev_local_{st.session_state.get('last_selected_line', 2)}")
+                     rev_cliente = st.text_input("Cliente:", value=substituicoes.get("<Cliente>", ""), key=f"rev_cliente_{st.session_state.get('last_selected_line', 2)}")
+                     rev_nome = st.text_input("Contato (Nome):", value=substituicoes.get("<Nome>", ""), key=f"rev_nome_{st.session_state.get('last_selected_line', 2)}")
+                     
+                     # Split logic for city/state if edited
+                     local_valor = f"{substituicoes.get('<Cidade>', '')}/{substituicoes.get('<Estado>', '')}"
+                     rev_local = st.text_input("Local (Cidade/Estado):", value=local_valor, key=f"rev_local_{st.session_state.get('last_selected_line', 2)}")
 
                 with col_rev2:
                      st.markdown("**Produto e Valores:**")
-                     st.text_input("Modelo Proposta:", value=substituicoes.get("<Modelo>", ""), disabled=True, key=f"rev_modelo_prod_{st.session_state.get('last_selected_line', 2)}")
-                     st.text_input("Valor Rompedor:", value=substituicoes.get("<Valor Rompedor>", ""), disabled=True, key=f"rev_val_romp_{st.session_state.get('last_selected_line', 2)}")
-                     st.text_input("Valor Kit:", value=substituicoes.get("<Valor Kit>", ""), disabled=True, key=f"rev_val_kit_{st.session_state.get('last_selected_line', 2)}")
+                     rev_modelo_p = st.text_input("Modelo Proposta:", value=substituicoes.get("<Modelo>", ""), key=f"rev_modelo_prod_{st.session_state.get('last_selected_line', 2)}")
+                     rev_val_romp = st.text_input("Valor Rompedor:", value=substituicoes.get("<Valor Rompedor>", ""), key=f"rev_val_romp_{st.session_state.get('last_selected_line', 2)}")
+                     rev_val_kit = st.text_input("Valor Kit:", value=substituicoes.get("<Valor Kit>", ""), key=f"rev_val_kit_{st.session_state.get('last_selected_line', 2)}")
+
+                # Campo de Observações (Área de texto para parágrafos maiores)
+                st.markdown("**Observações / Descrição Adicional:**")
+                rev_obs = st.text_area("Este texto será inserido no campo <Observações> do documento:", value=substituicoes.get("<Observações>", ""), height=100, key=f"rev_obs_{st.session_state.get('last_selected_line', 2)}")
+
+                # Atualiza dicionário de substituições com os valores da revisão manual
+                substituicoes["<Cliente>"] = rev_cliente
+                substituicoes["<Nome>"] = rev_nome
+                if "/" in rev_local:
+                    cidade, estado = rev_local.split("/", 1)
+                    substituicoes["<Cidade>"] = cidade.strip()
+                    substituicoes["<Estado>"] = estado.strip()
+                else:
+                    substituicoes["<Cidade>"] = rev_local
+                    substituicoes["<Estado>"] = ""
+                
+                substituicoes["<Modelo>"] = rev_modelo_p
+                substituicoes["<Valor Rompedor>"] = rev_val_romp
+                substituicoes["<Valor Kit>"] = rev_val_kit
+                substituicoes["<Observações>"] = rev_obs
 
                 with st.expander("Ver todas as substituições que serão feitas no documento"):
                      substituicoes_df = pd.DataFrame({
