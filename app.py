@@ -259,12 +259,19 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
 
     temp_file_id = None
     try:
-        # 1. Upload do ODT convertendo para Google Docs (usa quota temporariamente)
+        # 1. Upload do ODT convertendo para Google Docs.
+        # IMPORTANTE: Usa a pasta de modelos do usuário como parent (quota do usuário = 5TB)
+        # em vez do Drive da conta de serviço (quota limitada a 15GB).
         import uuid as _uuid
         nome_temp = f"_temp_proposta_{_uuid.uuid4().hex}"
+
+        # Pasta de modelos do usuário (onde a conta de serviço já tem acesso de Editor)
+        folder_id_modelos = "1daF_KyzA1te7cMFBuKJaAzvYxX7D7gKu"
+
         file_metadata = {
             'name': nome_temp,
-            'mimeType': 'application/vnd.google-apps.document'
+            'mimeType': 'application/vnd.google-apps.document',
+            'parents': [folder_id_modelos]   # <-- armazena no Drive do usuário
         }
         media = MediaIoBaseUpload(
             io.BytesIO(odt_bytes),
@@ -290,7 +297,7 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error(f"Falha na conversão para PDF via Google Drive: {str(e)}")
         return None
     finally:
-        # 3. Deletar PERMANENTEMENTE o arquivo temp (não vai para lixeira, libera quota imediato)
+        # 3. Deletar PERMANENTEMENTE o arquivo temp da pasta do usuário
         if temp_file_id:
             try:
                 service.files().delete(fileId=temp_file_id).execute()
