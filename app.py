@@ -214,11 +214,34 @@ def criar_odt_modificado(arquivo_original_bytes, content_xml_modificado):
         if temp_modificado_path and os.path.exists(temp_modificado_path):
             os.unlink(temp_modificado_path)
 
+def _limpar_arquivos_temp_drive(service):
+    """Deleta permanentemente quaisquer arquivos temporários de conversão que sobraram no Drive."""
+    try:
+        # Busca todos os arquivos temporários deixados por conversões anteriores
+        results = service.files().list(
+            q="name contains '_temp_proposta_' and trashed=false",
+            fields="files(id, name)"
+        ).execute()
+        arquivos = results.get('files', [])
+        for arq in arquivos:
+            try:
+                # Deleta permanentemente (não vai para lixeira, libera quota imediatamente)
+                service.files().delete(fileId=arq['id']).execute()
+            except Exception:
+                pass
+        # Também esvazia a lixeira para liberar quota de arquivos deletados anteriormente
+        try:
+            service.files().emptyTrash().execute()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
     """
     Converte ODT para PDF usando a API do Google Drive.
-    Faz upload do ODT como Google Doc e exporta como PDF.
-    Isso evita qualquer dependência do LibreOffice no servidor.
+    Faz upload do ODT como Google Doc, exporta como PDF e deleta imediatamente.
     """
     from googleapiclient.http import MediaIoBaseUpload
 
@@ -231,13 +254,17 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error("❌ Não foi possível autenticar com o Google Drive para converter o PDF.")
         return None
 
+    # Limpar arquivos temporários de conversões anteriores que falharam (libera quota)
+    _limpar_arquivos_temp_drive(service)
+
     temp_file_id = None
     try:
-        # 1. Upload do ODT para o Drive, convertendo para Google Docs automaticamente
-        nome_temp = f"_temp_proposta_{nome_arquivo_base}"
+        # 1. Upload do ODT convertendo para Google Docs (usa quota temporariamente)
+        import uuid as _uuid
+        nome_temp = f"_temp_proposta_{_uuid.uuid4().hex}"
         file_metadata = {
             'name': nome_temp,
-            'mimeType': 'application/vnd.google-apps.document'  # Converte para Google Doc no upload
+            'mimeType': 'application/vnd.google-apps.document'
         }
         media = MediaIoBaseUpload(
             io.BytesIO(odt_bytes),
@@ -251,7 +278,7 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         ).execute()
         temp_file_id = uploaded.get('id')
 
-        # 2. Exportar o Google Doc como PDF
+        # 2. Exportar como PDF
         pdf_bytes = service.files().export(
             fileId=temp_file_id,
             mimeType='application/pdf'
@@ -263,7 +290,7 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error(f"Falha na conversão para PDF via Google Drive: {str(e)}")
         return None
     finally:
-        # 3. Sempre deletar o arquivo temporário do Drive
+        # 3. Deletar PERMANENTEMENTE o arquivo temp (não vai para lixeira, libera quota imediato)
         if temp_file_id:
             try:
                 service.files().delete(fileId=temp_file_id).execute()
