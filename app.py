@@ -329,23 +329,32 @@ def converter_para_pdf_python(odt_bytes):
     100% Python, sem serviços externos, sem armazenamento em nuvem.
     """
     import weasyprint
-    from odf.opendocument import load as odf_load
     from odf.odf2xhtml import ODF2XHTML
 
-    odfcontent = odf_load(io.BytesIO(odt_bytes))
-    generator = ODF2XHTML(embedImages=True, odfreader=odfcontent)
-    html_content = generator.toxml()
+    # ODF2XHTML precisa de um arquivo em disco para funcionar corretamente
+    temp_odt_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as f:
+            f.write(odt_bytes)
+            temp_odt_path = f.name
 
-    # Adiciona CSS básico para melhorar a formatação do PDF
-    css_extra = weasyprint.CSS(string="""
-        @page { margin: 2cm; size: A4; }
-        body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; }
-        table { border-collapse: collapse; width: 100%; }
-        td, th { padding: 4px 8px; }
-    """)
+        generator = ODF2XHTML(generate_css=True)
+        generator.set_odffile(temp_odt_path)
+        html_content = generator.toxml()
 
-    pdf_bytes = weasyprint.HTML(string=html_content).write_pdf(stylesheets=[css_extra])
-    return pdf_bytes
+        # CSS extra para melhorar a formatação do PDF gerado
+        css_extra = weasyprint.CSS(string="""
+            @page { margin: 2cm; size: A4; }
+            body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; }
+            table { border-collapse: collapse; width: 100%; }
+            td, th { padding: 4px 8px; }
+        """)
+
+        pdf_bytes = weasyprint.HTML(string=html_content).write_pdf(stylesheets=[css_extra])
+        return pdf_bytes
+    finally:
+        if temp_odt_path and os.path.exists(temp_odt_path):
+            os.unlink(temp_odt_path)
 
 
 def converter_para_pdf(odt_bytes, nome_arquivo_base):
