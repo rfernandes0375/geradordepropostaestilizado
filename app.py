@@ -278,24 +278,20 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error("❌ Não foi possível autenticar com o Google Drive para converter o PDF.")
         return None
 
-    # Limpar TODOS os arquivos da conta de serviço para liberar a quota (15GB)
+    # Limpar TODOS os arquivos da conta de serviço
     _limpar_drive_conta_servico(service)
 
     temp_file_id = None
+    erro_drive = None
     try:
-        # 1. Upload do ODT convertendo para Google Docs.
-        # IMPORTANTE: Usa a pasta de modelos do usuário como parent (quota do usuário = 5TB)
-        # em vez do Drive da conta de serviço (quota limitada a 15GB).
+        # 1. Upload do ODT para o Drive da conta de serviço (15GB zerados — conta nova)
         import uuid as _uuid
         nome_temp = f"_temp_proposta_{_uuid.uuid4().hex}"
 
-        # Pasta de modelos do usuário (onde a conta de serviço já tem acesso de Editor)
-        folder_id_modelos = "1daF_KyzA1te7cMFBuKJaAzvYxX7D7gKu"
-
         file_metadata = {
             'name': nome_temp,
-            'mimeType': 'application/vnd.google-apps.document',
-            'parents': [folder_id_modelos]   # <-- armazena no Drive do usuário
+            'mimeType': 'application/vnd.google-apps.document'
+            # SEM parents: usa o Drive próprio da conta de serviço (quota zerada)
         }
         media = MediaIoBaseUpload(
             io.BytesIO(odt_bytes),
@@ -318,10 +314,11 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         return pdf_bytes
 
     except Exception as e:
-        st.error(f"Falha na conversão para PDF via Google Drive: {str(e)}")
+        erro_drive = str(e)
+        with st.expander("❌ Erro detalhado Google Drive (clique para ver)", expanded=True):
+            st.error(f"Falha na conversão via Google Drive:\n\n{erro_drive}")
         return None
     finally:
-        # 3. Deletar PERMANENTEMENTE o arquivo temp da pasta do usuário
         if temp_file_id:
             try:
                 service.files().delete(fileId=temp_file_id).execute()
