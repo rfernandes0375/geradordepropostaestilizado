@@ -239,6 +239,10 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
     pdf_path = None # Inicializa pdf_path
 
     try:
+        if not odt_bytes or len(odt_bytes) == 0:
+            st.error("⚠️ O arquivo ODT recebido está vazio (0 bytes). Verifique o modelo original.")
+            return None
+
         with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as temp_odt:
             temp_odt.write(odt_bytes)
             temp_odt_path = temp_odt.name
@@ -255,8 +259,12 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
             temp_odt_path
         ]
 
+        # Configurar ambiente explicitamente para contêineres restritos
+        env_config = os.environ.copy()
+        env_config['HOME'] = tempfile.gettempdir()
+
         # Usar Popen para melhor controle, especialmente no Windows
-        process = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=(os.name == 'nt'))
+        process = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env_config, shell=(os.name == 'nt'))
         stdout, stderr = process.communicate(timeout=120) # Timeout aumentado
 
         if process.returncode != 0:
