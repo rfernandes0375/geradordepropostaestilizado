@@ -325,35 +325,82 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
 
 def converter_para_pdf_python(odt_bytes):
     """
-    Converte ODT → HTML (via odfpy/odf2xhtml) → PDF (via weasyprint).
-    100% Python, sem serviços externos, sem armazenamento em nuvem.
+    Converte ODT → HTML customizado → PDF (via weasyprint).
+    Usa parser XML direto para capturar text:p e draw:text-box.
     """
     import weasyprint
-    from odf.odf2xhtml import ODF2XHTML
+    from xml.etree import ElementTree as ET
+    import html as html_lib
 
-    # ODF2XHTML precisa de um arquivo em disco para funcionar corretamente
-    temp_odt_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as f:
-            f.write(odt_bytes)
-            temp_odt_path = f.name
+    NS_TEXT  = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'
+    NS_DRAW  = 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0'
+    NS_TABLE = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0'
 
-        generator = ODF2XHTML(generate_css=True)
-        html_content = generator.odf2xhtml(temp_odt_path)
+    with zipfile.ZipFile(io.BytesIO(odt_bytes)) as z:
+        content_xml = z.read('content.xml')
 
-        # CSS extra para melhorar a formatação do PDF gerado
-        css_extra = weasyprint.CSS(string="""
-            @page { margin: 2cm; size: A4; }
-            body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; }
-            table { border-collapse: collapse; width: 100%; }
-            td, th { padding: 4px 8px; }
-        """)
+    root = ET.fromstring(content_xml)
+    parts = []
 
-        pdf_bytes = weasyprint.HTML(string=html_content).write_pdf(stylesheets=[css_extra])
-        return pdf_bytes
-    finally:
-        if temp_odt_path and os.path.exists(temp_odt_path):
-            os.unlink(temp_odt_path)
+    def get_text(el):
+        texts = []
+        if el.text:
+            texts.append(el.text)
+        for child in el:
+            texts.append(get_text(child))
+            if child.tail:
+                texts.append(child.tail)
+        return ''.join(texts)
+
+    def process(el):
+        tag = el.tag.split('}')[1] if '}' in el.tag else el.tag
+        ns  = el.tag.split('}')[0][1:] if '}' in el.tag else ''
+
+        if ns == NS_TEXT and tag == 'p':
+            text = get_text(el).strip()
+            parts.append(f'<p>{html_lib.escape(text) if text else "&nbsp;"}</p>\n')
+        elif ns == NS_TEXT and tag == 'h':
+            lvl  = el.get(f'{{{NS_TEXT}}}outline-level', '2')
+            text = get_text(el).strip()
+            if text:
+                parts.append(f'<h{lvl}>{html_lib.escape(text)}</h{lvl}>\n')
+        elif ns == NS_DRAW and tag in ('text-box', 'frame'):
+            for child in el:
+                process(child)
+        elif ns == NS_TABLE and tag == 'table':
+            parts.append('<table>\n')
+            for row in el.iter(f'{{{NS_TABLE}}}table-row'):
+                parts.append('<tr>')
+                for cell in row:
+                    cell_tag = cell.tag.split('}')[1] if '}' in cell.tag else ''
+                    if 'table-cell' in cell_tag:
+                        parts.append('<td>')
+                        for p in cell:
+                            process(p)
+                        parts.append('</td>')
+                parts.append('</tr>\n')
+            parts.append('</table>\n')
+        else:
+            for child in el:
+                process(child)
+
+    body = root.find(f'.//{{{NS_TEXT}}}text')
+    if body is not None:
+        for child in body:
+            process(child)
+
+    css = """<style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #000; }
+    p { margin: 0.3em 0; }
+    h1,h2,h3 { color: #111; margin-top: 1em; }
+    table { width: 100%; border-collapse: collapse; margin: 0.8em 0; }
+    td { padding: 5px 10px; border: 1px solid #ccc; vertical-align: top; }
+    </style>"""
+
+    html = f'<!DOCTYPE html><html><head><meta charset="utf-8">{css}</head><body>{"".join(parts)}</body></html>'
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    return pdf_bytes
 
 
 def converter_para_pdf(odt_bytes, nome_arquivo_base):
