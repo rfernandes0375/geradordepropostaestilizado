@@ -43,7 +43,10 @@ def get_google_drive_service():
     try:
         if "google_cloud" in st.secrets:
             creds_dict = dict(st.secrets["google_cloud"])
-            creds = service_account.Credentials.from_service_account_info(creds_dict)
+            scopes = ['https://www.googleapis.com/auth/drive']
+            creds = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=scopes
+            )
             return build('drive', 'v3', credentials=creds)
         else:
             st.error("⚠️ Seção [google_cloud] não encontrada no secrets.toml.")
