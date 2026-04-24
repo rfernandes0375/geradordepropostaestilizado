@@ -323,35 +323,68 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
                 pass
 
 
+def converter_para_pdf_python(odt_bytes):
+    """
+    Converte ODT → HTML (via odfpy/odf2xhtml) → PDF (via weasyprint).
+    100% Python, sem serviços externos, sem armazenamento em nuvem.
+    """
+    import weasyprint
+    from odf.opendocument import load as odf_load
+    from odf.odf2xhtml import ODF2XHTML
+
+    odfcontent = odf_load(io.BytesIO(odt_bytes))
+    generator = ODF2XHTML(embedImages=True, odfreader=odfcontent)
+    html_content = generator.toxml()
+
+    # Adiciona CSS básico para melhorar a formatação do PDF
+    css_extra = weasyprint.CSS(string="""
+        @page { margin: 2cm; size: A4; }
+        body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; }
+        table { border-collapse: collapse; width: 100%; }
+        td, th { padding: 4px 8px; }
+    """)
+
+    pdf_bytes = weasyprint.HTML(string=html_content).write_pdf(stylesheets=[css_extra])
+    return pdf_bytes
+
+
 def converter_para_pdf(odt_bytes, nome_arquivo_base):
     """
-    Converte ODT para PDF.
-    Tenta primeiro via Google Drive API (confiável em nuvem).
-    Usa LibreOffice local como fallback (para desenvolvimento local).
+    Converte ODT para PDF com três estratégias em cascata:
+    1. Python nativo (odfpy + weasyprint) — sem storage, sem serviços externos
+    2. Google Drive API — fallback nuvem
+    3. LibreOffice local — fallback desenvolvimento local
     """
-    # --- Tentativa 1: Google Drive API (preferencial no Streamlit Cloud) ---
+    # --- Tentativa 1: Python nativo (principal — funciona no Streamlit Cloud) ---
+    try:
+        resultado = converter_para_pdf_python(odt_bytes)
+        if resultado:
+            return resultado
+    except Exception as e:
+        st.warning(f"⚠️ Conversão Python nativa falhou ({e}). Tentando Google Drive...")
+
+    # --- Tentativa 2: Google Drive API ---
     if "google_cloud" in st.secrets:
         resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
         if resultado:
             return resultado
         st.warning("⚠️ Falha na conversão via Google Drive. Tentando LibreOffice local...")
 
-    # --- Tentativa 2: LibreOffice local (fallback para dev local) ---
+    # --- Tentativa 3: LibreOffice local (dev local) ---
     libreoffice_path = None
-    paths_to_try = [
+    for path in [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
         "/usr/bin/libreoffice",
         "/Applications/LibreOffice.app/Contents/MacOS/soffice",
         "/usr/bin/soffice"
-    ]
-    for path in paths_to_try:
+    ]:
         if os.path.exists(path):
             libreoffice_path = path
             break
 
     if not libreoffice_path:
-        st.error("⚠️ LibreOffice não encontrado e Google Drive falhou. Não foi possível gerar o PDF.")
+        st.error("⚠️ Nenhum método de conversão disponível. Instale o LibreOffice ou configure o Google Drive.")
         return None
 
     temp_odt_path = None

@@ -8,3 +8,4 @@ google-auth>=2.23.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.0.0
 gspread>=5.10.0
+weasyprint>=60.0
