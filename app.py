@@ -418,24 +418,24 @@ def converter_para_pdf_python(odt_bytes):
 def converter_para_pdf(odt_bytes, nome_arquivo_base):
     """
     Converte ODT para PDF com três estratégias em cascata:
-    1. Python nativo (odfpy + weasyprint) — sem storage, sem serviços externos
-    2. Google Drive API — fallback nuvem
+    1. Google Drive API — qualidade idêntica ao template (conta nova com quota zerada)
+    2. Python nativo (weasyprint) — sem layout mas funciona
     3. LibreOffice local — fallback desenvolvimento local
     """
-    # --- Tentativa 1: Python nativo (principal — funciona no Streamlit Cloud) ---
+    # --- Tentativa 1: Google Drive API (qualidade perfeita) ---
+    if "google_cloud" in st.secrets:
+        resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
+        if resultado:
+            return resultado
+        st.warning("⚠️ Falha na conversão via Google Drive. Tentando conversão Python...")
+
+    # --- Tentativa 2: Python nativo (sem layout perfeito, mas funciona) ---
     try:
         resultado = converter_para_pdf_python(odt_bytes)
         if resultado:
             return resultado
     except Exception as e:
-        st.warning(f"⚠️ Conversão Python nativa falhou ({e}). Tentando Google Drive...")
-
-    # --- Tentativa 2: Google Drive API ---
-    if "google_cloud" in st.secrets:
-        resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
-        if resultado:
-            return resultado
-        st.warning("⚠️ Falha na conversão via Google Drive. Tentando LibreOffice local...")
+        st.warning(f"⚠️ Conversão Python nativa falhou ({e}). Tentando LibreOffice local...")
 
     # --- Tentativa 3: LibreOffice local (dev local) ---
     libreoffice_path = None
