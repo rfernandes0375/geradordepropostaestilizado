@@ -416,11 +416,14 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
     3. LibreOffice local — fallback desenvolvimento local
     """
     # --- Tentativa 1: Google Drive API (qualidade perfeita) ---
+    st.info(f"🔍 [Debug] Secrets disponíveis: {list(st.secrets.keys())}")
     if "google_cloud" in st.secrets:
         resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
         if resultado:
             return resultado
         st.warning("⚠️ Falha na conversão via Google Drive. Tentando conversão Python...")
+    else:
+        st.warning("⚠️ [Debug] Seção google_cloud NÃO encontrada nos secrets. Usando Python...")
 
     # --- Tentativa 2: Python nativo (sem layout perfeito, mas funciona) ---
     try:
