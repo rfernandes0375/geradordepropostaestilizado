@@ -159,13 +159,15 @@ def substituir_no_xml(content_xml, substituicoes):
     }
 
     # Primeiro, substituir os placeholders no formato de database-display
+    import html as _html_mod
+
     for coluna, placeholder in mapeamento_colunas.items():
         if placeholder in substituicoes:
+            valor_xml = _html_mod.escape(str(substituicoes[placeholder]))
             padrao = f'<text:database-display[^>]*text:column-name="{re.escape(coluna)}"[^>]*>([^<]*)</text:database-display>'
-            # Usamos uma função lambda para preservar a estrutura original da tag, apenas mudando o conteúdo
             texto_modificado, num_subs = re.subn(
                 padrao,
-                lambda m: f'<text:database-display text:column-name="{coluna}" text:table-name="Planilha1" text:table-type="table" text:database-name="Formulário propostas Rompedor1">{substituicoes[placeholder]}</text:database-display>',
+                lambda m, v=valor_xml, c=coluna: f'<text:database-display text:column-name="{c}" text:table-name="Planilha1" text:table-type="table" text:database-name="Formulário propostas Rompedor1">{v}</text:database-display>',
                 texto_modificado
             )
             substituicoes_feitas += num_subs
@@ -173,7 +175,8 @@ def substituir_no_xml(content_xml, substituicoes):
     # Depois, substituir os placeholders como texto simples (se existirem)
     for placeholder, valor in substituicoes.items():
         padrao_simples = re.escape(placeholder)
-        texto_modificado, num_subs_simples = re.subn(padrao_simples, str(valor), texto_modificado)
+        valor_xml = _html_mod.escape(str(valor))
+        texto_modificado, num_subs_simples = re.subn(padrao_simples, valor_xml, texto_modificado)
         substituicoes_feitas += num_subs_simples
 
     return texto_modificado, substituicoes_feitas
@@ -339,7 +342,14 @@ def converter_para_pdf_python(odt_bytes):
     with zipfile.ZipFile(io.BytesIO(odt_bytes)) as z:
         content_xml = z.read('content.xml')
 
-    root = ET.fromstring(content_xml)
+    try:
+        root = ET.fromstring(content_xml)
+    except ET.ParseError:
+        # Remove caracteres de controle inválidos em XML (exceto tab, LF, CR)
+        import re as _re
+        content_str = content_xml.decode('utf-8', errors='replace')
+        content_str = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', content_str)
+        root = ET.fromstring(content_str.encode('utf-8'))
     parts = []
 
     def get_text(el):
