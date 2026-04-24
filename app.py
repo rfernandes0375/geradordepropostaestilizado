@@ -239,17 +239,28 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
     pdf_path = None # Inicializa pdf_path
 
     try:
+        import uuid
+        import shutil
+
         if not odt_bytes or len(odt_bytes) == 0:
             st.error("⚠️ O arquivo ODT recebido está vazio (0 bytes). Verifique o modelo original.")
             return None
 
-        with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as temp_odt:
-            temp_odt.write(odt_bytes)
-            temp_odt_path = temp_odt.name
+        # Usar o diretório local do app em vez de /tmp para evitar bloqueios do AppArmor no Streamlit Cloud
+        local_temp_dir = os.path.join(os.getcwd(), "tmp_libreoffice")
+        os.makedirs(local_temp_dir, exist_ok=True)
 
-        temp_pdf_dir = tempfile.mkdtemp()
+        file_id = uuid.uuid4().hex
+        temp_odt_path = os.path.join(local_temp_dir, f"doc_{file_id}.odt")
+        temp_pdf_dir = local_temp_dir
 
-        profile_dir = os.path.join(tempfile.gettempdir(), f"libreoffice_profile_{os.getpid()}")
+        with open(temp_odt_path, 'wb') as f:
+            f.write(odt_bytes)
+
+        # Garantir permissões de leitura
+        os.chmod(temp_odt_path, 0o666)
+
+        profile_dir = os.path.join(local_temp_dir, f"profile_{file_id}")
         comando = [
             libreoffice_path,
             f'-env:UserInstallation=file://{profile_dir}',
@@ -261,7 +272,7 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
 
         # Configurar ambiente explicitamente para contêineres restritos
         env_config = os.environ.copy()
-        env_config['HOME'] = tempfile.gettempdir()
+        env_config['HOME'] = local_temp_dir
 
         # Usar Popen para melhor controle, especialmente no Windows
         process = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env_config, shell=(os.name == 'nt'))
@@ -269,25 +280,19 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
 
         if process.returncode != 0:
             error_message = stderr.decode('utf-8', errors='ignore')
-            # Tentar extrair mensagem mais útil do erro do LibreOffice
             if "Error: source file could not be loaded" in error_message:
-                 raise Exception("Erro do LibreOffice: O arquivo ODT de origem não pôde ser carregado (pode estar corrompido ou ter permissões incorretas).")
+                 raise Exception("Erro do LibreOffice: O arquivo de origem não pôde ser carregado. Isso geralmente é um bloqueio de permissão (AppArmor) no contêiner Linux.")
             elif "error while loading shared libraries" in error_message:
                  raise Exception(f"Erro do LibreOffice: Falta de bibliotecas compartilhadas. Detalhes: {error_message}")
             else:
                  raise Exception(f"Erro na conversão (código {process.returncode}): {error_message}")
 
-
-        # O nome do arquivo PDF gerado pelo LibreOffice será o mesmo do ODT, mas com extensão .pdf
         pdf_filename = os.path.basename(temp_odt_path).replace('.odt', '.pdf')
         pdf_path = os.path.join(temp_pdf_dir, pdf_filename)
 
-
         if not os.path.exists(pdf_path):
-             # Adicionar verificação do stdout para pistas
              output_message = stdout.decode('utf-8', errors='ignore')
-             raise Exception(f"Arquivo PDF não foi gerado em '{temp_pdf_dir}'. Output: {output_message}")
-
+             raise Exception(f"Arquivo PDF não foi gerado. Output: {output_message}")
 
         with open(pdf_path, 'rb') as f:
             pdf_bytes = f.read()
@@ -299,23 +304,21 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
         return None
     except Exception as e:
         st.error(f"Falha na conversão para PDF: {str(e)}")
-        # Adicionar log extra para depuração
         st.error(f"Comando executado: {' '.join(comando)}")
         if 'stderr' in locals() and stderr: st.error(f"Saída de erro do processo: {stderr.decode('utf-8', errors='ignore')}")
         return None
     finally:
-        # Limpeza final
-        if temp_odt_path and os.path.exists(temp_odt_path):
-            os.unlink(temp_odt_path)
-        if pdf_path and os.path.exists(pdf_path):
-             os.unlink(pdf_path)
-        if temp_pdf_dir and os.path.exists(temp_pdf_dir):
-             try:
-                  os.rmdir(temp_pdf_dir)
-             except OSError:
-                  # Pode falhar se o LibreOffice ainda tiver algum lock, mas tentamos
-                  st.warning(f"Não foi possível remover o diretório temporário {temp_pdf_dir}. Pode ser necessário remover manualmente.")
-                  pass
+        # Limpeza local
+        try:
+            if temp_odt_path and os.path.exists(temp_odt_path):
+                os.unlink(temp_odt_path)
+            if pdf_path and os.path.exists(pdf_path):
+                 os.unlink(pdf_path)
+            if 'profile_dir' in locals() and os.path.exists(profile_dir):
+                 import shutil
+                 shutil.rmtree(profile_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def formatar_valor_monetario(valor):
