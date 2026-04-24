@@ -214,26 +214,44 @@ def criar_odt_modificado(arquivo_original_bytes, content_xml_modificado):
         if temp_modificado_path and os.path.exists(temp_modificado_path):
             os.unlink(temp_modificado_path)
 
-def _limpar_arquivos_temp_drive(service):
-    """Deleta permanentemente quaisquer arquivos temporários de conversão que sobraram no Drive."""
+def _limpar_drive_conta_servico(service):
+    """
+    Deleta permanentemente TODOS os arquivos de propriedade da conta de serviço.
+    A conta de serviço não deve conter arquivos legítimos — é apenas uma conta técnica.
+    Isso libera a quota de armazenamento (15GB) antes de fazer o upload de conversão.
+    """
     try:
-        # Busca todos os arquivos temporários deixados por conversões anteriores
-        results = service.files().list(
-            q="name contains '_temp_proposta_' and trashed=false",
-            fields="files(id, name)"
-        ).execute()
-        arquivos = results.get('files', [])
-        for arq in arquivos:
-            try:
-                # Deleta permanentemente (não vai para lixeira, libera quota imediatamente)
-                service.files().delete(fileId=arq['id']).execute()
-            except Exception:
-                pass
-        # Também esvazia a lixeira para liberar quota de arquivos deletados anteriormente
+        page_token = None
+        total_deletados = 0
+        while True:
+            params = {
+                "q": "'me' in owners and trashed=false",
+                "fields": "nextPageToken, files(id, name)",
+                "pageSize": 100
+            }
+            if page_token:
+                params["pageToken"] = page_token
+
+            results = service.files().list(**params).execute()
+            arquivos = results.get('files', [])
+
+            for arq in arquivos:
+                try:
+                    service.files().delete(fileId=arq['id']).execute()
+                    total_deletados += 1
+                except Exception:
+                    pass
+
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+
+        # Esvazia a lixeira para liberar quota imediatamente
         try:
             service.files().emptyTrash().execute()
         except Exception:
             pass
+
     except Exception:
         pass
 
@@ -254,8 +272,8 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error("❌ Não foi possível autenticar com o Google Drive para converter o PDF.")
         return None
 
-    # Limpar arquivos temporários de conversões anteriores que falharam (libera quota)
-    _limpar_arquivos_temp_drive(service)
+    # Limpar TODOS os arquivos da conta de serviço para liberar a quota (15GB)
+    _limpar_drive_conta_servico(service)
 
     temp_file_id = None
     try:
