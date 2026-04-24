@@ -245,8 +245,10 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
 
         temp_pdf_dir = tempfile.mkdtemp()
 
+        profile_dir = os.path.join(tempfile.gettempdir(), f"libreoffice_profile_{os.getpid()}")
         comando = [
             libreoffice_path,
+            f'-env:UserInstallation=file://{profile_dir}',
             '--headless',
             '--convert-to', 'pdf',
             '--outdir', temp_pdf_dir,
