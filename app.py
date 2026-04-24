@@ -265,58 +265,51 @@ def _limpar_drive_conta_servico(service):
 def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
     """
     Converte ODT para PDF usando a API do Google Drive.
-    Faz upload do ODT como Google Doc, exporta como PDF e deleta imediatamente.
     """
     from googleapiclient.http import MediaIoBaseUpload
+    import uuid as _uuid
 
     if not odt_bytes or len(odt_bytes) == 0:
-        st.error("⚠️ O arquivo ODT recebido está vazio (0 bytes). Verifique o modelo original.")
+        st.error("⚠️ ODT vazio (0 bytes).")
         return None
 
+    st.info("🔄 [Drive] Autenticando...")
     service = get_google_drive_service()
     if not service:
-        st.error("❌ Não foi possível autenticar com o Google Drive para converter o PDF.")
+        st.error("❌ [Drive] Falha na autenticação.")
         return None
-
-    # Limpar TODOS os arquivos da conta de serviço
-    _limpar_drive_conta_servico(service)
+    st.info("✅ [Drive] Autenticado.")
 
     temp_file_id = None
-    erro_drive = None
     try:
-        # 1. Upload do ODT para o Drive da conta de serviço (15GB zerados — conta nova)
-        import uuid as _uuid
-        nome_temp = f"_temp_proposta_{_uuid.uuid4().hex}"
-
+        nome_temp = f"_temp_{_uuid.uuid4().hex}"
         file_metadata = {
             'name': nome_temp,
             'mimeType': 'application/vnd.google-apps.document'
-            # SEM parents: usa o Drive próprio da conta de serviço (quota zerada)
         }
         media = MediaIoBaseUpload(
             io.BytesIO(odt_bytes),
             mimetype='application/vnd.oasis.opendocument.text',
             resumable=False
         )
+        st.info(f"🔄 [Drive] Fazendo upload ({len(odt_bytes)} bytes)...")
         uploaded = service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
         temp_file_id = uploaded.get('id')
+        st.info(f"✅ [Drive] Upload OK (id={temp_file_id}). Exportando PDF...")
 
-        # 2. Exportar como PDF
         pdf_bytes = service.files().export(
             fileId=temp_file_id,
             mimeType='application/pdf'
         ).execute()
-
+        st.info(f"✅ [Drive] PDF gerado ({len(pdf_bytes)} bytes).")
         return pdf_bytes
 
     except Exception as e:
-        erro_drive = str(e)
-        with st.expander("❌ Erro detalhado Google Drive (clique para ver)", expanded=True):
-            st.error(f"Falha na conversão via Google Drive:\n\n{erro_drive}")
+        st.error(f"❌ [Drive] ERRO: {str(e)}")
         return None
     finally:
         if temp_file_id:
