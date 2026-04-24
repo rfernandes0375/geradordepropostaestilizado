@@ -339,8 +339,7 @@ def converter_para_pdf_python(odt_bytes):
             temp_odt_path = f.name
 
         generator = ODF2XHTML(generate_css=True)
-        generator.set_odffile(temp_odt_path)
-        html_content = generator.toxml()
+        html_content = generator.odf2xhtml(temp_odt_path)
 
         # CSS extra para melhorar a formatação do PDF gerado
         css_extra = weasyprint.CSS(string="""
