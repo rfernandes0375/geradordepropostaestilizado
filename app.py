@@ -39,7 +39,7 @@ temp_dir = tempfile.gettempdir()
 # --- INTEGRAÇÃO GOOGLE CLOUD ---
 
 def get_google_drive_service():
-    """Autentica e retorna o serviço do Google Drive"""
+    """Autentica via conta de serviço (apenas para leitura de templates)"""
     try:
         if "google_cloud" in st.secrets:
             creds_dict = dict(st.secrets["google_cloud"])
@@ -54,6 +54,29 @@ def get_google_drive_service():
         st.error(f"❌ Erro de Autenticação Google: {e}")
         return None
     return None
+
+def get_user_drive_service():
+    """Autentica via OAuth2 do usuário (usa quota do usuário - 5TB)"""
+    try:
+        if "oauth2_drive" not in st.secrets:
+            return None
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request as GRequest
+        o = st.secrets["oauth2_drive"]
+        creds = Credentials(
+            token=None,
+            refresh_token=o["refresh_token"],
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=o["client_id"],
+            client_secret=o["client_secret"],
+            scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        creds.refresh(GRequest())
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        st.warning(f"⚠️ OAuth2 falhou: {e}")
+        return None
+
 
 def listar_modelos_google_drive(folder_id):
     """Lista arquivos ODT e Documentos Google em uma pasta específica do Drive"""
@@ -273,8 +296,11 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error("⚠️ ODT vazio (0 bytes).")
         return None
 
-    st.info("🔄 [Drive] Autenticando...")
-    service = get_google_drive_service()
+    st.info("🔄 [Drive] Autenticando com credenciais do usuário (OAuth2)...")
+    service = get_user_drive_service()
+    if not service:
+        st.info("🔄 [Drive] OAuth2 não configurado. Tentando conta de serviço...")
+        service = get_google_drive_service()
     if not service:
         st.error("❌ [Drive] Falha na autenticação.")
         return None
