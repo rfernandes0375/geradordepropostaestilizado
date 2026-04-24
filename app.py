@@ -335,9 +335,10 @@ def converter_para_pdf_python(odt_bytes):
     from xml.etree import ElementTree as ET
     import html as html_lib
 
-    NS_TEXT  = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'
-    NS_DRAW  = 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0'
-    NS_TABLE = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0'
+    NS_TEXT   = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'
+    NS_DRAW   = 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0'
+    NS_TABLE  = 'urn:oasis:names:tc:opendocument:xmlns:table:1.0'
+    NS_OFFICE = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'
 
     with zipfile.ZipFile(io.BytesIO(odt_bytes)) as z:
         content_xml = z.read('content.xml')
@@ -394,7 +395,8 @@ def converter_para_pdf_python(odt_bytes):
             for child in el:
                 process(child)
 
-    body = root.find(f'.//{{{NS_TEXT}}}text')
+    # O corpo do documento ODT é office:text (não text:text)
+    body = root.find(f'.//{{{NS_OFFICE}}}text')
     if body is not None:
         for child in body:
             process(child)
