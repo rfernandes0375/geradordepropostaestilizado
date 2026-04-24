@@ -214,8 +214,77 @@ def criar_odt_modificado(arquivo_original_bytes, content_xml_modificado):
         if temp_modificado_path and os.path.exists(temp_modificado_path):
             os.unlink(temp_modificado_path)
 
+def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
+    """
+    Converte ODT para PDF usando a API do Google Drive.
+    Faz upload do ODT como Google Doc e exporta como PDF.
+    Isso evita qualquer dependência do LibreOffice no servidor.
+    """
+    from googleapiclient.http import MediaIoBaseUpload
+
+    if not odt_bytes or len(odt_bytes) == 0:
+        st.error("⚠️ O arquivo ODT recebido está vazio (0 bytes). Verifique o modelo original.")
+        return None
+
+    service = get_google_drive_service()
+    if not service:
+        st.error("❌ Não foi possível autenticar com o Google Drive para converter o PDF.")
+        return None
+
+    temp_file_id = None
+    try:
+        # 1. Upload do ODT para o Drive, convertendo para Google Docs automaticamente
+        nome_temp = f"_temp_proposta_{nome_arquivo_base}"
+        file_metadata = {
+            'name': nome_temp,
+            'mimeType': 'application/vnd.google-apps.document'  # Converte para Google Doc no upload
+        }
+        media = MediaIoBaseUpload(
+            io.BytesIO(odt_bytes),
+            mimetype='application/vnd.oasis.opendocument.text',
+            resumable=False
+        )
+        uploaded = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        temp_file_id = uploaded.get('id')
+
+        # 2. Exportar o Google Doc como PDF
+        pdf_bytes = service.files().export(
+            fileId=temp_file_id,
+            mimeType='application/pdf'
+        ).execute()
+
+        return pdf_bytes
+
+    except Exception as e:
+        st.error(f"Falha na conversão para PDF via Google Drive: {str(e)}")
+        return None
+    finally:
+        # 3. Sempre deletar o arquivo temporário do Drive
+        if temp_file_id:
+            try:
+                service.files().delete(fileId=temp_file_id).execute()
+            except Exception:
+                pass
+
+
 def converter_para_pdf(odt_bytes, nome_arquivo_base):
-    """Converte ODT para PDF usando LibreOffice"""
+    """
+    Converte ODT para PDF.
+    Tenta primeiro via Google Drive API (confiável em nuvem).
+    Usa LibreOffice local como fallback (para desenvolvimento local).
+    """
+    # --- Tentativa 1: Google Drive API (preferencial no Streamlit Cloud) ---
+    if "google_cloud" in st.secrets:
+        resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
+        if resultado:
+            return resultado
+        st.warning("⚠️ Falha na conversão via Google Drive. Tentando LibreOffice local...")
+
+    # --- Tentativa 2: LibreOffice local (fallback para dev local) ---
     libreoffice_path = None
     paths_to_try = [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
@@ -224,101 +293,55 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
         "/Applications/LibreOffice.app/Contents/MacOS/soffice",
         "/usr/bin/soffice"
     ]
-
     for path in paths_to_try:
         if os.path.exists(path):
             libreoffice_path = path
             break
 
     if not libreoffice_path:
-        st.error("⚠️ **LibreOffice não encontrado.** Verifique a instalação ou o caminho no código.")
+        st.error("⚠️ LibreOffice não encontrado e Google Drive falhou. Não foi possível gerar o PDF.")
         return None
 
     temp_odt_path = None
-    temp_pdf_dir = None
-    pdf_path = None # Inicializa pdf_path
-
+    pdf_path = None
     try:
-        import uuid
-        import shutil
-
-        if not odt_bytes or len(odt_bytes) == 0:
-            st.error("⚠️ O arquivo ODT recebido está vazio (0 bytes). Verifique o modelo original.")
-            return None
-
-        # Usar o diretório local do app em vez de /tmp para evitar bloqueios do AppArmor no Streamlit Cloud
-        local_temp_dir = os.path.join(os.getcwd(), "tmp_libreoffice")
-        os.makedirs(local_temp_dir, exist_ok=True)
-
-        file_id = uuid.uuid4().hex
-        temp_odt_path = os.path.join(local_temp_dir, f"doc_{file_id}.odt")
-        temp_pdf_dir = local_temp_dir
-
-        with open(temp_odt_path, 'wb') as f:
+        with tempfile.NamedTemporaryFile(suffix='.odt', delete=False) as f:
             f.write(odt_bytes)
+            temp_odt_path = f.name
 
-        # Garantir permissões de leitura
-        os.chmod(temp_odt_path, 0o666)
-
-        profile_dir = os.path.join(local_temp_dir, f"profile_{file_id}")
+        temp_pdf_dir = tempfile.gettempdir()
+        profile_dir = os.path.join(temp_pdf_dir, f"lo_profile_{os.getpid()}")
         comando = [
             libreoffice_path,
             f'-env:UserInstallation=file://{profile_dir}',
-            '--headless',
+            '--headless', '--norestore', '--nofirststartwizard',
             '--convert-to', 'pdf',
             '--outdir', temp_pdf_dir,
             temp_odt_path
         ]
-
-        # Configurar ambiente explicitamente para contêineres restritos
         env_config = os.environ.copy()
-        env_config['HOME'] = local_temp_dir
+        env_config['HOME'] = temp_pdf_dir
 
-        # Usar Popen para melhor controle, especialmente no Windows
         process = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env_config, shell=(os.name == 'nt'))
-        stdout, stderr = process.communicate(timeout=120) # Timeout aumentado
-
-        if process.returncode != 0:
-            error_message = stderr.decode('utf-8', errors='ignore')
-            if "Error: source file could not be loaded" in error_message:
-                 raise Exception("Erro do LibreOffice: O arquivo de origem não pôde ser carregado. Isso geralmente é um bloqueio de permissão (AppArmor) no contêiner Linux.")
-            elif "error while loading shared libraries" in error_message:
-                 raise Exception(f"Erro do LibreOffice: Falta de bibliotecas compartilhadas. Detalhes: {error_message}")
-            else:
-                 raise Exception(f"Erro na conversão (código {process.returncode}): {error_message}")
+        stdout, stderr = process.communicate(timeout=120)
 
         pdf_filename = os.path.basename(temp_odt_path).replace('.odt', '.pdf')
         pdf_path = os.path.join(temp_pdf_dir, pdf_filename)
 
         if not os.path.exists(pdf_path):
-             output_message = stdout.decode('utf-8', errors='ignore')
-             raise Exception(f"Arquivo PDF não foi gerado. Output: {output_message}")
+            raise Exception(f"PDF não gerado. Stderr: {stderr.decode('utf-8', errors='ignore')}")
 
         with open(pdf_path, 'rb') as f:
-            pdf_bytes = f.read()
+            return f.read()
 
-        return pdf_bytes
-
-    except subprocess.TimeoutExpired:
-        st.error("⏳ A conversão para PDF demorou muito (timeout). Tente novamente ou verifique o arquivo ODT.")
-        return None
     except Exception as e:
-        st.error(f"Falha na conversão para PDF: {str(e)}")
-        st.error(f"Comando executado: {' '.join(comando)}")
-        if 'stderr' in locals() and stderr: st.error(f"Saída de erro do processo: {stderr.decode('utf-8', errors='ignore')}")
+        st.error(f"Falha na conversão local via LibreOffice: {str(e)}")
         return None
     finally:
-        # Limpeza local
-        try:
-            if temp_odt_path and os.path.exists(temp_odt_path):
-                os.unlink(temp_odt_path)
-            if pdf_path and os.path.exists(pdf_path):
-                 os.unlink(pdf_path)
-            if 'profile_dir' in locals() and os.path.exists(profile_dir):
-                 import shutil
-                 shutil.rmtree(profile_dir, ignore_errors=True)
-        except Exception:
-            pass
+        if temp_odt_path and os.path.exists(temp_odt_path):
+            os.unlink(temp_odt_path)
+        if pdf_path and os.path.exists(pdf_path):
+            os.unlink(pdf_path)
 
 
 def formatar_valor_monetario(valor):
