@@ -296,15 +296,12 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
         st.error("⚠️ ODT vazio (0 bytes).")
         return None
 
-    st.info("🔄 [Drive] Autenticando com credenciais do usuário (OAuth2)...")
     service = get_user_drive_service()
     if not service:
-        st.info("🔄 [Drive] OAuth2 não configurado. Tentando conta de serviço...")
         service = get_google_drive_service()
     if not service:
         st.error("❌ [Drive] Falha na autenticação.")
         return None
-    st.info("✅ [Drive] Autenticado.")
 
     temp_file_id = None
     try:
@@ -318,20 +315,17 @@ def converter_para_pdf_drive(odt_bytes, nome_arquivo_base):
             mimetype='application/vnd.oasis.opendocument.text',
             resumable=False
         )
-        st.info(f"🔄 [Drive] Fazendo upload ({len(odt_bytes)} bytes)...")
         uploaded = service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
         temp_file_id = uploaded.get('id')
-        st.info(f"✅ [Drive] Upload OK (id={temp_file_id}). Exportando PDF...")
 
         pdf_bytes = service.files().export(
             fileId=temp_file_id,
             mimeType='application/pdf'
         ).execute()
-        st.info(f"✅ [Drive] PDF gerado ({len(pdf_bytes)} bytes).")
         return pdf_bytes
 
     except Exception as e:
@@ -442,14 +436,11 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
     3. LibreOffice local — fallback desenvolvimento local
     """
     # --- Tentativa 1: Google Drive API (qualidade perfeita) ---
-    st.info(f"🔍 [Debug] Secrets disponíveis: {list(st.secrets.keys())}")
-    if "google_cloud" in st.secrets:
+    if "google_cloud" in st.secrets or "oauth2_drive" in st.secrets:
         resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
         if resultado:
             return resultado
         st.warning("⚠️ Falha na conversão via Google Drive. Tentando conversão Python...")
-    else:
-        st.warning("⚠️ [Debug] Seção google_cloud NÃO encontrada nos secrets. Usando Python...")
 
     # --- Tentativa 2: Python nativo (sem layout perfeito, mas funciona) ---
     try:
