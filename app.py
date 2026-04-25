@@ -612,41 +612,54 @@ def load_css():
             font-family: 'Inter', sans-serif !important;
         }
 
-        /* Cabeçalho com logo */
+        /* Cabeçalho com logo — layout horizontal */
         .header-container {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
             justify-content: center;
-            margin-bottom: 3rem;
-            margin-top: 1rem;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+            margin-top: 0.5rem;
+            padding: 1.25rem 2rem;
+            background: linear-gradient(135deg, rgba(37,99,235,0.05) 0%, rgba(16,185,129,0.05) 100%);
+            border-radius: 20px;
+            border: 1px solid rgba(37, 99, 235, 0.1);
         }
+        .header-identity { display: flex; flex-direction: column; }
         .logo-img {
-             height: 100px;
-             margin-bottom: 1.5rem;
-             filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.08));
+            height: 70px;
+            filter: drop-shadow(0px 4px 10px rgba(0,0,0,0.08));
+            flex-shrink: 0;
         }
         .header-title {
-            text-align: center;
+            text-align: left;
             background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            font-size: 2.8rem !important;
+            font-size: 2.2rem !important;
             font-weight: 800 !important;
             margin: 0 !important;
+        }
+        .header-subtitle {
+            color: #64748b;
+            font-size: 0.875rem;
+            margin: 0.2rem 0 0;
+            font-weight: 500;
         }
 
         /* Soft Glassmorphism nos Containers (Tema Claro) */
         [data-testid="stVerticalBlock"] > [style*="border: 1px solid rgba(49, 51, 63, 0.2)"],
-        [data-testid="stVerticalBlock"] > [style*="border: 1px solid rgba(250, 250, 250, 0.2)"] {
-            background: rgba(255, 255, 255, 0.7) !important;
+        [data-testid="stVerticalBlock"] > [style*="border: 1px solid rgba(250, 250, 250, 0.2)"],
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            background: rgba(255, 255, 255, 0.75) !important;
             backdrop-filter: blur(12px) !important;
             -webkit-backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.8) !important;
-            border-radius: 20px !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
-            padding: 2.5rem !important;
-            margin-bottom: 2rem !important;
+            border: 1px solid rgba(226, 232, 240, 0.8) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04) !important;
+            padding: 1.5rem !important;
+            margin-bottom: 1.25rem !important;
         }
 
         /* Estilos das Abas (Tabs) Claras */
@@ -728,14 +741,94 @@ def load_css():
             background: #f8fafc !important;
         }
 
-        /* Rodapé Fixo */
+        /* Rodapé */
         .footer {
-            margin-top: 4rem;
-            padding: 2rem 0;
+            margin-top: 2rem;
+            padding: 1.5rem 2rem;
             border-top: 1px solid #e2e8f0;
             text-align: center;
             color: #94a3b8;
-            font-size: 0.9rem;
+            font-size: 0.875rem;
+            background: linear-gradient(135deg, rgba(37,99,235,0.03) 0%, rgba(16,185,129,0.03) 100%);
+            border-radius: 16px;
+        }
+        .footer strong { color: #475569; }
+        .footer a { color: #2563eb; text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+
+        /* Barra de Progresso por Etapas */
+        .progress-stepper {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            max-width: 480px;
+            margin: 0 auto 1.5rem;
+        }
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+        .step-circle {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            border: 2px solid #cbd5e1;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.85rem;
+            color: #94a3b8;
+            transition: all 0.3s ease;
+        }
+        .step-circle.done { background: #10b981; border-color: #10b981; color: white; }
+        .step-circle.active { background: #2563eb; border-color: #2563eb; color: white; box-shadow: 0 0 0 4px rgba(37,99,235,0.15); }
+        .step-label {
+            font-size: 0.68rem; color: #94a3b8;
+            margin-top: 0.35rem; text-align: center;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .step-label.active { color: #2563eb; }
+        .step-label.done { color: #10b981; }
+        .step-connector {
+            flex: 1; height: 2px;
+            background: #e2e8f0;
+            margin-top: 16px;
+        }
+        .step-connector.done { background: #10b981; }
+
+        /* Card de Resumo (Passo 3) */
+        .summary-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            background: linear-gradient(135deg, rgba(37,99,235,0.05) 0%, rgba(16,185,129,0.05) 100%);
+            border: 1px solid rgba(37, 99, 235, 0.15);
+            border-radius: 14px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1.25rem;
+        }
+        .summary-item { flex: 1; min-width: 140px; }
+        .summary-item .s-label {
+            font-size: 0.7rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            color: #64748b; margin-bottom: 0.2rem;
+        }
+        .summary-item .s-value {
+            font-size: 1rem; font-weight: 700; color: #0f172a;
+        }
+        .summary-item .s-value.money { color: #059669; }
+
+        /* Responsividade mobile */
+        @media (max-width: 768px) {
+            .header-container { flex-direction: column; gap: 0.75rem; padding: 1rem; }
+            .header-title { font-size: 1.6rem !important; text-align: center; }
+            .header-subtitle { text-align: center; }
+            .main .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+            .summary-card { flex-direction: column; }
+        }
+        @media (max-width: 480px) {
+            .header-title { font-size: 1.3rem !important; }
+            .logo-img { height: 50px; }
         }
     </style>
     """, unsafe_allow_html=True)
@@ -747,9 +840,30 @@ def render_header():
     st.markdown(f"""
     <div class="header-container">
         <img class="logo-img" src="{logo_base64}" alt="Logo Jardim Equipamentos">
-        <h1 class="header-title">Gerador de Propostas</h1>
+        <div class="header-identity">
+            <h1 class="header-title">Gerador de Propostas</h1>
+            <span class="header-subtitle">Jardim Equipamentos — Propostas Comerciais</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+
+# --- Barra de Progresso por Etapas ---
+def render_progress_bar():
+    step = {"Upload": 1, "Seleção": 2, "Geração": 3}.get(st.session_state.get('current_tab', 'Upload'), 1)
+    steps = [("1", "Upload"), ("2", "Seleção"), ("3", "Gerar PDF")]
+    html = '<div class="progress-stepper">'
+    for i, (num, label) in enumerate(steps, 1):
+        if i < step:
+            cc, lc, cn = 'done', 'done', '✓'
+        elif i == step:
+            cc, lc, cn = 'active', 'active', num
+        else:
+            cc, lc, cn = '', '', num
+        html += f'<div class="step-item"><div class="step-circle {cc}">{cn}</div><span class="step-label {lc}">{label}</span></div>'
+        if i < len(steps):
+            html += f'<div class="step-connector {"done" if i < step else ""}" ></div>'
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 render_header()
 
@@ -766,6 +880,8 @@ if 'dados_linha_selecionada' not in st.session_state:
     st.session_state['dados_linha_selecionada'] = None
 if 'modelo_selecionado_nome' not in st.session_state:
     st.session_state['modelo_selecionado_nome'] = None
+
+render_progress_bar()
 
 # --- Criação das Abas ---
 tab_upload, tab_selecao, tab_geracao = st.tabs([
@@ -784,7 +900,8 @@ with tab_upload:
     
     with col_meta1:
         with st.container(border=True):
-            st.subheader("📊 Banco de Dados (Planilha)")
+            status_planilha = "✅" if st.session_state.get('planilha_data') is not None else "⏳"
+            st.subheader(f"📊 Banco de Dados {status_planilha}")
             origem_dados = st.radio("Origem da Planilha:", ["Upload Manual", "Google Sheets (Nuvem)"], horizontal=True, key="origem_dados", index=1)
             
             if origem_dados == "Upload Manual":
@@ -855,7 +972,8 @@ with tab_upload:
 
     with col_meta2:
         with st.container(border=True):
-            st.subheader("📄 Modelos de Proposta")
+            status_modelos = "✅" if (st.session_state.get('modelos_info') or st.session_state.get('modelos_drive_info')) else "⏳"
+            st.subheader(f"📄 Modelos de Proposta {status_modelos}")
             origem_modelos = st.radio("Origem dos Modelos:", ["Upload Manual", "Google Drive"], horizontal=True, key="origem_modelos", index=1) # Google Drive como padrão
             
             if origem_modelos == "Upload Manual":
@@ -941,8 +1059,24 @@ with tab_selecao:
                      st.session_state['last_selected_line'] = linha_selecionada_usuario
 
                      with st.expander("🔍 Pré-visualizar Dados da Linha Selecionada", expanded=True):
-                          preview_data = {k: v for k, v in st.session_state['dados_linha_selecionada'].items() if k in ['Cliente', 'Modelo', 'Valor Rompedor', 'Valor Kit', 'Data']}
-                          st.dataframe(pd.Series(preview_data).astype(str), use_container_width=True)
+                          cliente = st.session_state['dados_linha_selecionada'].get('Cliente', '—')
+                          modelo = st.session_state['dados_linha_selecionada'].get('Modelo', '—')
+                          v_romp = st.session_state['dados_linha_selecionada'].get('Valor Rompedor', '—')
+                          v_kit = st.session_state['dados_linha_selecionada'].get('Valor Kit', '—')
+                          
+                          st.markdown(f"""
+                          <div style="background: rgba(37,99,235,0.05); padding: 1rem; border-radius: 12px; border: 1px solid rgba(37,99,235,0.1);">
+                              <div style="font-weight: 800; color: #1e293b; font-size: 1.1rem; margin-bottom: 0.5rem;">👤 {cliente}</div>
+                              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.9rem;">
+                                  <div><strong style="color: #64748b;">Modelo:</strong> <br>{modelo}</div>
+                                  <div>
+                                      <strong style="color: #64748b;">Valores:</strong> <br>
+                                      <span style="color: #059669; font-weight: 600;">Rompedor: {v_romp}</span><br>
+                                      <span style="color: #059669; font-weight: 600;">Kit: {v_kit}</span>
+                                  </div>
+                              </div>
+                          </div>
+                          """, unsafe_allow_html=True)
 
                 else:
                      st.error(f"❌ Linha {linha_selecionada_usuario} inválida. Selecione um valor entre 2 e {len(df) + 1}.")
@@ -1188,6 +1322,32 @@ with tab_geracao:
 
             st.divider()
 
+            # Card de resumo antes do botão gerar
+            st.markdown(f"""
+            <div class="summary-card">
+                <div class="summary-item">
+                    <div class="s-label">👤 Cliente</div>
+                    <div class="s-value">{substituicoes.get('<Cliente>', '—')}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="s-label">🔢 Nº Proposta</div>
+                    <div class="s-value">{substituicoes.get('<Número>', '—')}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="s-label">🏗️ Modelo</div>
+                    <div class="s-value">{substituicoes.get('<Modelo>', '—')}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="s-label">💰 Valor Rompedor</div>
+                    <div class="s-value money">{substituicoes.get('<Valor Rompedor>', '—')}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="s-label">📦 Valor Kit</div>
+                    <div class="s-value money">{substituicoes.get('<Valor Kit>', '—')}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
             if st.button("🚀 Gerar Documento PDF Agora", type="primary", key="generate_pdf_final", use_container_width=True):
                  pdf_bytes_result = None  
                  pdf_filename_result = None 
@@ -1260,11 +1420,11 @@ with tab_geracao:
                       if 'last_selected_line' in st.session_state: del st.session_state['last_selected_line'] 
                       st.rerun()
 
-st.markdown("---") 
-st.markdown("""
+st.markdown(f"""
 <div class="footer">
-    <p>Jardim Equipamentos - Gerador de Propostas Comerciais</p>
-    <p>© 2025 - Todos os direitos reservados - Desenvolvido por Rodrigo Ferreira</p>
+    <img src="{logo_base64}" alt="Jardim" style="height:36px; margin-bottom:0.75rem; opacity:0.7;">
+    <p><strong>Jardim Equipamentos</strong> — Gerador de Propostas Comerciais</p>
+    <p style="margin-top:0.35rem;">© 2026 · Todos os direitos reservados · Desenvolvido por <strong>Rodrigo Ferreira</strong></p>
 </div>
 """, unsafe_allow_html=True)
 
