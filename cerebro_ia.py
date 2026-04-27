@@ -14,7 +14,7 @@ try:
         with open(secrets_path, "r", encoding="utf-8") as f:
             dados = toml.load(f)
             api_key_gemini = dados.get("gemini", {}).get("api_key")
-            api_key_groq = dados.get("groq", {}).get("api_key") # Você precisará adicionar este campo
+            api_key_groq = dados.get("groq", {}).get("api_key")
 except Exception as e:
     print(f"Erro ao ler secrets: {e}")
 
@@ -22,11 +22,15 @@ except Exception as e:
 if api_key_gemini:
     genai.configure(api_key=api_key_gemini)
 
-def extrair_dados_proposta_groq(texto_ou_audio_path, tipo="texto", prompt_personalizado=None):
+def extrair_dados_proposta_groq(texto_ou_audio_path, tipo="texto", prompt_personalizado=None, status_callback=None):
     """Fallback usando Groq (Llama 3 + Whisper)"""
     if not api_key_groq:
-        return None # Se não tiver chave da Groq, não faz nada
+        return None
     
+    def log(msg):
+        print(f"IA (Groq): {msg}")
+        if status_callback: status_callback(f"☁️ IA (Groq): {msg}")
+
     try:
         client = Groq(api_key=api_key_groq)
         prompt_base = """
@@ -36,7 +40,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
 """
         texto_final = ""
         if tipo == "audio":
-            print("IA (Groq): Transcrevendo áudio com Whisper...")
+            log("Transcrevendo áudio com Whisper...")
             with open(texto_ou_audio_path, "rb") as file:
                 transcription = client.audio.transcriptions.create(
                     file=(texto_ou_audio_path, file.read()),
@@ -53,7 +57,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
         if prompt_personalizado:
             msg_usuario["content"] = f"JSON ATUAL: {prompt_personalizado}. CORREÇÃO: {texto_final}"
             
-        print("IA (Groq): Extraindo JSON com Llama 3.3...")
+        log("Extraindo dados com Llama 3.3...")
         chat_completion = client.chat.completions.create(
             messages=[msg_sistema, msg_usuario],
             model="llama-3.3-70b-versatile",
@@ -66,12 +70,16 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
             res["Transcricao"] = texto_final
         return res
     except Exception as e:
-        print(f"⚠️ Erro na Groq: {e}")
+        log(f"Erro: {e}")
         return None
 
-def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personalizado=None):
+def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personalizado=None, status_callback=None):
     """Tenta Gemini, se der erro de cota, tenta Groq"""
     
+    def log(msg):
+        print(f"IA: {msg}")
+        if status_callback: status_callback(f"🧠 IA: {msg}")
+
     prompt_base = """
 Você é um assistente comercial da Jardim Equipamentos. Extraia os dados e gere um JSON.
 Campos: Transcricao, Cliente, Cidade, Estado, Nome, Email, Telefone, Modelo, TIPO DE MÁQUINA, MODELO DE MÁQUINA, Valor Rompedor, Condição de pagamento, FRETE.
@@ -86,7 +94,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
             tentativas = 2
             while tentativas > 0:
                 try:
-                    print(f"IA (Gemini): Tentando {nome_modelo}...")
+                    log(f"Tentando {nome_modelo}...")
                     model = genai.GenerativeModel(
                         model_name=nome_modelo, 
                         generation_config={"response_mime_type": "application/json", "temperature": 0.1}, 
@@ -99,7 +107,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
                             msg = [f"JSON ATUAL: {prompt_personalizado}. CORREÇÃO: {texto_ou_audio_path}"]
                         response = model.generate_content(msg)
                     elif tipo == "audio":
-                        print("IA (Gemini): Upload do áudio...")
+                        log("Processando áudio...")
                         arquivo = genai.upload_file(path=texto_ou_audio_path, mime_type="audio/ogg")
                         while arquivo.state.name == "PROCESSING":
                             time.sleep(2)
@@ -117,7 +125,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
                 except Exception as e:
                     erro_str = str(e)
                     if "429" in erro_str:
-                        print(f"⏳ Gemini {nome_modelo} sem cota...")
+                        log(f"Limite atingido em {nome_modelo}...")
                         tentativas -= 1
                         if tentativas > 0: time.sleep(5)
                         continue
@@ -127,9 +135,9 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
                 tentativas = 0
 
     # Se chegou aqui, é porque o Gemini falhou ou está sem cota
-    print("🔄 Tentando Backup via Groq...")
-    res_groq = extrair_dados_proposta_groq(texto_ou_audio_path, tipo, prompt_personalizado)
+    if status_callback: status_callback("🔄 Mudando para Backup (Groq)...")
+    res_groq = extrair_dados_proposta_groq(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
     if res_groq:
         return res_groq
 
-    return {"erro": "Limite de cota excedido em todas as IAs. Tente novamente em 1 minuto."}
+    return {"erro": "Limite de cota excedido. Tente novamente em 1 minuto."}

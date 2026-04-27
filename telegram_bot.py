@@ -5,6 +5,7 @@ import toml
 import tempfile
 import re
 from datetime import datetime
+import asyncio
 
 # --- MOCK DO STREAMLIT PARA O BOT RODAR SEM ERRO ---
 class DummyStreamlit:
@@ -71,10 +72,22 @@ def is_authorized(user_id):
     if not authorized: return True
     return user_id in authorized
 
-def salvar_na_planilha_google(dados_proposta):
-    if not dados_proposta: 
-        print("⚠️ Erro: dados_proposta é nulo ao salvar no Google.")
-        return False
+# Helper para logs em tempo real no Telegram
+def criar_callback_status(context, chat_id, message_id, loop):
+    def callback(texto):
+        try:
+            # Roda a corotina de edição de forma síncrona dentro da thread da IA
+            asyncio.run_coroutine_threadsafe(
+                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=f"⏳ {texto}"),
+                loop
+            )
+        except:
+            pass
+    return callback
+
+def salvar_na_planilha_google(dados_proposta, status_callback=None):
+    if not dados_proposta: return False
+    if status_callback: status_callback("Salvando no Google Sheets...")
     try:
         if "google_cloud" not in DummyStreamlit.secrets: return False
         gc = gspread.service_account_from_dict(DummyStreamlit.secrets["google_cloud"])
@@ -112,26 +125,23 @@ def salvar_na_planilha_google(dados_proposta):
                  row_to_add.append(str(dados_proposta.get(h, "")))
                  
         worksheet.append_row(row_to_add)
+        if status_callback: status_callback("✅ Google Sheets OK!")
         return True
     except Exception as e:
         print(f"Erro planilha Google: {e}")
+        if status_callback: status_callback(f"⚠️ Erro Google Sheets: {e}")
         return False
 
-def salvar_na_planilha_local(dados_proposta):
-    """Salva uma cópia dos dados no arquivo .ods local do servidor"""
-    if not dados_proposta:
-        print("⚠️ Erro: dados_proposta é nulo ao salvar localmente.")
-        return False
+def salvar_na_planilha_local(dados_proposta, status_callback=None):
+    if not dados_proposta: return False
+    if status_callback: status_callback("Salvando Planilha Local...")
     try:
         import pandas as pd
         if not os.path.exists(PATH_PLANILHA_LOCAL):
-            print(f"⚠️ Planilha local não encontrada: {PATH_PLANILHA_LOCAL}")
+            if status_callback: status_callback("⚠️ Planilha local não encontrada!")
             return False
             
-        # Lê a planilha atual
         df_local = pd.read_excel(PATH_PLANILHA_LOCAL, engine='odf')
-        
-        # Prepara a nova linha (mapeando colunas)
         nova_linha = {}
         hoje = datetime.today()
         meses = {1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"}
@@ -143,13 +153,13 @@ def salvar_na_planilha_local(dados_proposta):
             elif col == "NOME DO ARQUIVO": nova_linha[col] = f"JE {dados_proposta.get('Número', '')} - {dados_proposta.get('Cliente', '')}"
             else: nova_linha[col] = dados_proposta.get(col, "")
             
-        # Adiciona e salva
         df_novo = pd.concat([df_local, pd.DataFrame([nova_linha])], ignore_index=True)
         df_novo.to_excel(PATH_PLANILHA_LOCAL, engine='odf', index=False)
-        print("✅ Dados salvos na planilha local com sucesso!")
+        if status_callback: status_callback("✅ Planilha Local OK!")
         return True
     except Exception as e:
-        print(f"⚠️ Erro ao salvar planilha local (Pode estar aberta): {e}")
+        print(f"⚠️ Erro salvar local: {e}")
+        if status_callback: status_callback("⚠️ Erro Local (Arquivo em uso)")
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -195,7 +205,7 @@ async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     dados = context.user_data.get('dados_temp')
-    await query.edit_message_text("⏳ Buscando arquivos ODT no Drive...")
+    await query.edit_message_text("⏳ Buscando modelos no Drive...")
     modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
     
     palavras_busca = []
@@ -219,7 +229,6 @@ async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_authorized(user.id): return
-
     texto_usuario = update.message.text
     waiting_field = context.user_data.get('waiting_for')
     
@@ -231,42 +240,43 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await exibir_resumo_edicao(update, context)
         return
 
+    msg_wait = await update.message.reply_text("⏳ Iniciando IA...")
+    loop = asyncio.get_event_loop()
+    callback = criar_callback_status(context, update.message.chat_id, msg_wait.message_id, loop)
+
     if context.user_data.get('dados_temp'):
-        msg_wait = await update.message.reply_text("🔄 Atualizando dados...")
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        # Passa o texto como comando e o JSON atual como prompt_personalizado
-        dados_novos = extrair_dados_proposta(texto_usuario, tipo="texto", prompt_personalizado=contexto_atual)
+        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(texto_usuario, "texto", contexto_atual, callback))
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
                 if k == "Estado": val = normalizar_uf(v)
                 elif k == "Email": val = str(v).lower()
                 else: val = v
                 context.user_data['dados_temp'][k] = val
+    else:
+        dados = await loop.run_in_executor(None, lambda: extrair_dados_proposta(texto_usuario, "texto", None, callback))
+        if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
+        if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
+        context.user_data['dados_temp'] = dados
 
-        await msg_wait.delete()
-        await exibir_resumo_edicao(update, context)
-        return
-
-    msg_wait = await update.message.reply_text("🧠 Extraindo dados...")
-    dados = extrair_dados_proposta(texto_usuario, tipo="texto")
-    if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
-    if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
     await msg_wait.delete()
-    context.user_data['dados_temp'] = dados
     await exibir_resumo_edicao(update, context)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_authorized(user.id): return
-    msg_wait = await update.message.reply_text("🎤 Analisando áudio...")
+    msg_wait = await update.message.reply_text("⏳ Recebendo áudio...")
     voice_file = await context.bot.get_file(update.message.voice.file_id)
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
         await voice_file.download_to_drive(tmp.name)
         tmp_path = tmp.name
     
+    loop = asyncio.get_event_loop()
+    callback = criar_callback_status(context, update.message.chat_id, msg_wait.message_id, loop)
+
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        dados_novos = extrair_dados_proposta(tmp_path, tipo="audio", prompt_personalizado=contexto_atual)
+        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(tmp_path, "audio", contexto_atual, callback))
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
                 if k == "Estado": val = normalizar_uf(v)
@@ -274,7 +284,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else: val = v
                 context.user_data['dados_temp'][k] = val
     else:
-        dados = extrair_dados_proposta(tmp_path, tipo="audio")
+        dados = await loop.run_in_executor(None, lambda: extrair_dados_proposta(tmp_path, "audio", None, callback))
         if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
         if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
         context.user_data['dados_temp'] = dados
@@ -285,14 +295,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
+    try: await query.answer()
+    except: pass
 
     if query.data == "cancelar":
         context.user_data.clear()
-        await query.edit_message_text("🗑️ Dados limpos. Pode começar uma nova proposta.")
+        await query.edit_message_text("🗑️ Dados limpos.")
         return
     if query.data == "voltar_edicao":
         await exibir_resumo_edicao(update, context)
@@ -308,23 +316,31 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("file_"):
         dados = context.user_data.get('dados_temp')
         if not dados:
-            await query.edit_message_text("❌ Erro: Os dados da proposta expiraram ou foram perdidos. Por favor, envie os dados novamente.")
+            await query.edit_message_text("❌ Erro: Dados perdidos.")
             return
 
         file_id = query.data.replace("file_", "")
-        await query.edit_message_text("⏳ Gerando proposta final...")
+        msg_wait = await query.edit_message_text("⏳ Iniciando sincronização...")
         
-        # Gravação Dupla (Nuvem + Local)
-        salvar_na_planilha_google(dados)
-        salvar_na_planilha_local(dados)
+        loop = asyncio.get_event_loop()
+        callback = criar_callback_status(context, query.message.chat_id, msg_wait.message_id, loop)
+
+        # Gravação Dupla (Nuvem + Local) com logs
+        await loop.run_in_executor(None, lambda: salvar_na_planilha_google(dados, callback))
+        await loop.run_in_executor(None, lambda: salvar_na_planilha_local(dados, callback))
         
+        callback("Bixando modelo do Drive...")
         modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
         modelo_escolhido = next((m for m in modelos if m['id'] == file_id), None)
         modelo_bytes = baixar_arquivo_drive(modelo_escolhido['id'], modelo_escolhido['mimeType'])
+        
+        callback("Montando arquivo ODT...")
         substituicoes = criar_substituicoes(dados)
         content_xml = extrair_conteudo_odt(modelo_bytes)
         content_xml_modificado, _ = substituir_no_xml(content_xml, substituicoes)
         odt_modificado = criar_odt_modificado(modelo_bytes, content_xml_modificado)
+        
+        callback("Convertendo para PDF...")
         nome_arquivo = f"JE {dados.get('Número')} - {dados.get('Cliente', 'Proposta')}"
         pdf_bytes = converter_para_pdf(odt_modificado, nome_arquivo)
 
@@ -333,7 +349,7 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 tmp.write(pdf_bytes)
                 tmp_path = tmp.name
             with open(tmp_path, "rb") as f:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=f, filename=f"{nome_arquivo}.pdf", write_timeout=60)
+                await context.bot.send_document(chat_id=query.message.chat_id, document=f, filename=f"{nome_arquivo}.pdf")
             os.unlink(tmp_path)
             await query.delete_message()
         else:
@@ -342,12 +358,12 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     token = DummyStreamlit.secrets.get("telegram", {}).get("bot_token")
     if not token: return
-    app = Application.builder().token(token).read_timeout(60).connect_timeout(60).build()
+    app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(on_button_click))
-    print("🚀 Robô Online!")
+    print("🚀 Robô Online com Status em Tempo Real!")
     app.run_polling()
 
 if __name__ == "__main__":
