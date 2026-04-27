@@ -72,6 +72,9 @@ def is_authorized(user_id):
     return user_id in authorized
 
 def salvar_na_planilha_google(dados_proposta):
+    if not dados_proposta: 
+        print("⚠️ Erro: dados_proposta é nulo ao salvar no Google.")
+        return False
     try:
         if "google_cloud" not in DummyStreamlit.secrets: return False
         gc = gspread.service_account_from_dict(DummyStreamlit.secrets["google_cloud"])
@@ -116,6 +119,9 @@ def salvar_na_planilha_google(dados_proposta):
 
 def salvar_na_planilha_local(dados_proposta):
     """Salva uma cópia dos dados no arquivo .ods local do servidor"""
+    if not dados_proposta:
+        print("⚠️ Erro: dados_proposta é nulo ao salvar localmente.")
+        return False
     try:
         import pandas as pd
         if not os.path.exists(PATH_PLANILHA_LOCAL):
@@ -228,8 +234,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get('dados_temp'):
         msg_wait = await update.message.reply_text("🔄 Atualizando dados...")
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        prompt_correcao = f"Com base no JSON atual: {contexto_atual}. Aplique esta correção do usuário: {texto_usuario}. Retorne o JSON atualizado."
-        dados_novos = extrair_dados_proposta(prompt_correcao, tipo="texto")
+        # Passa o texto como comando e o JSON atual como prompt_personalizado
+        dados_novos = extrair_dados_proposta(texto_usuario, tipo="texto", prompt_personalizado=contexto_atual)
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
                 if k == "Estado": val = normalizar_uf(v)
@@ -260,7 +266,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        dados_novos = extrair_dados_proposta(f"Audio de correção para este JSON: {contexto_atual}. Audio path: {tmp_path}", tipo="audio")
+        dados_novos = extrair_dados_proposta(tmp_path, tipo="audio", prompt_personalizado=contexto_atual)
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
                 if k == "Estado": val = normalizar_uf(v)
@@ -279,7 +285,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except:
+        pass
 
     if query.data == "cancelar":
         context.user_data.clear()
@@ -297,8 +306,12 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await exibir_selecao_modelo(query, context)
         return
     if query.data.startswith("file_"):
-        file_id = query.data.replace("file_", "")
         dados = context.user_data.get('dados_temp')
+        if not dados:
+            await query.edit_message_text("❌ Erro: Os dados da proposta expiraram ou foram perdidos. Por favor, envie os dados novamente.")
+            return
+
+        file_id = query.data.replace("file_", "")
         await query.edit_message_text("⏳ Gerando proposta final...")
         
         # Gravação Dupla (Nuvem + Local)

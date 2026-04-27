@@ -20,14 +20,14 @@ if not api_key:
 else:
     genai.configure(api_key=api_key)
 
-def extrair_dados_proposta(texto_ou_audio_path, tipo="texto"):
+def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personalizado=None):
     """
     Versão com Retry Automático para evitar Erro 429 (Limite de Cota).
     """
     if not api_key:
         return {"erro": "Chave de API não configurada."}
 
-    prompt_sistema = """
+    prompt_base = """
 Você é um assistente comercial da Jardim Equipamentos. Extraia os dados e gere um JSON.
 Campos: Transcricao, Cliente, Cidade, Estado, Nome, Email, Telefone, Modelo, TIPO DE MÁQUINA, MODELO DE MÁQUINA, Valor Rompedor, Condição de pagamento, FRETE.
 Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas números e vírgula.
@@ -44,17 +44,32 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
         while tentativas > 0:
             try:
                 print(f"IA: Tentando {nome_modelo} (Restam {tentativas} tentativas)...")
-                model = genai.GenerativeModel(model_name=nome_modelo, generation_config={"response_mime_type": "application/json", "temperature": 0.1}, system_instruction=prompt_sistema)
+                # Usa prompt_base como system_instruction
+                model = genai.GenerativeModel(
+                    model_name=nome_modelo, 
+                    generation_config={"response_mime_type": "application/json", "temperature": 0.1}, 
+                    system_instruction=prompt_base
+                )
 
                 if tipo == "texto":
-                    response = model.generate_content(texto_ou_audio_path)
+                    # Se tiver prompt personalizado (correção), envia junto
+                    msg = [texto_ou_audio_path]
+                    if prompt_personalizado:
+                        msg = [f"JSON ATUAL: {prompt_personalizado}. CORREÇÃO: {texto_ou_audio_path}"]
+                    response = model.generate_content(msg)
                 elif tipo == "audio":
                     print("IA: Upload do áudio...")
                     arquivo = genai.upload_file(path=texto_ou_audio_path, mime_type="audio/ogg")
                     while arquivo.state.name == "PROCESSING":
                         time.sleep(2)
                         arquivo = genai.get_file(arquivo.name)
-                    response = model.generate_content([arquivo, "Extraia o JSON deste áudio."])
+                    
+                    # Se for correção via áudio, manda o JSON atual junto com o arquivo de áudio
+                    msg_audio = [arquivo]
+                    if prompt_personalizado:
+                        msg_audio.append(f"JSON ATUAL PARA CORRIGIR: {prompt_personalizado}")
+                    
+                    response = model.generate_content(msg_audio)
                     genai.delete_file(arquivo.name)
                 
                 if response and response.text:
