@@ -34,7 +34,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
 """
 
     # Modelos que apareceram como disponíveis na sua lista oficial
-    modelos_para_tentar = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
+    modelos_para_tentar = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
     
     response = None
     erro_final = ""

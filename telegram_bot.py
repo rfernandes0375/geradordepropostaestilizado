@@ -186,7 +186,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if waiting_field:
         if waiting_field == "Valor Rompedor": texto_usuario = re.sub(r'[^0-9,]', '', texto_usuario)
-        context.user_data['dados_temp'][waiting_field] = texto_usuario if waiting_field == "Email" else texto_usuario.upper()
+        val = texto_usuario.lower() if waiting_field == "Email" else texto_usuario.upper()
+        context.user_data['dados_temp'][waiting_field] = val
         context.user_data['waiting_for'] = None
         await exibir_resumo_edicao(update, context)
         return
@@ -198,8 +199,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dados_novos = extrair_dados_proposta(prompt_correcao, tipo="texto")
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
-                val = normalizar_uf(v) if k == "Estado" else v
+                if k == "Estado": val = normalizar_uf(v)
+                elif k == "Email": val = str(v).lower()
+                else: val = v
                 context.user_data['dados_temp'][k] = val
+
         await msg_wait.delete()
         await exibir_resumo_edicao(update, context)
         return
@@ -207,6 +211,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_wait = await update.message.reply_text("🧠 Extraindo dados...")
     dados = extrair_dados_proposta(texto_usuario, tipo="texto")
     if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
+    if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
     await msg_wait.delete()
     context.user_data['dados_temp'] = dados
     await exibir_resumo_edicao(update, context)
@@ -225,11 +230,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dados_novos = extrair_dados_proposta(f"Audio de correção para este JSON: {contexto_atual}. Audio path: {tmp_path}", tipo="audio")
         for k, v in dados_novos.items():
             if v and v != "---" and k != "Transcricao":
-                val = normalizar_uf(v) if k == "Estado" else v
+                if k == "Estado": val = normalizar_uf(v)
+                elif k == "Email": val = v.lower()
+                else: val = v
                 context.user_data['dados_temp'][k] = val
     else:
         dados = extrair_dados_proposta(tmp_path, tipo="audio")
         if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
+        if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
         context.user_data['dados_temp'] = dados
 
     os.unlink(tmp_path)
