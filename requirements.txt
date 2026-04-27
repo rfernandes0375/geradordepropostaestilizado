@@ -1,6 +1,9 @@
 python-telegram-bot
 gspread
+odfpy
+pandas
 google-generativeai
+groq
 toml
 odfpy
 requests
