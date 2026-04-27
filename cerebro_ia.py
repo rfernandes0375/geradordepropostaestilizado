@@ -33,14 +33,32 @@ def extrair_dados_proposta_groq(texto_ou_audio_path, tipo="texto", prompt_person
 
     try:
         client = Groq(api_key=api_key_groq)
+        # Prompt mais detalhado para o Llama
         prompt_base = """
-Você é um assistente comercial da Jardim Equipamentos. Extraia os dados e gere um JSON puro.
-Campos: Transcricao, Cliente, Cidade, Estado, Nome, Email, Telefone, Modelo, TIPO DE MÁQUINA, MODELO DE MÁQUINA, Valor Rompedor, Condição de pagamento, FRETE.
-Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas números e vírgula.
+Você é um especialista em extração de dados comerciais da Jardim Equipamentos.
+Sua missão é ler um texto ou transcrição e retornar um JSON com estes campos EXATOS:
+- Transcricao: O texto completo ouvido ou lido.
+- Cliente: Nome da empresa ou pessoa.
+- Cidade: Nome da cidade.
+- Estado: SIGLA do estado (ex: GO, SP, RJ).
+- Nome: Nome do contato/vendedor.
+- Email: E-mail em letras minúsculas.
+- Telefone: Apenas números e traços.
+- Modelo: O modelo do equipamento (ex: AT 810M).
+- TIPO DE MÁQUINA: Ex: ESCAVADEIRA, RETROESCAVADEIRA.
+- MODELO DE MÁQUINA: Ex: KOMATSU PC200, CAT 320.
+- Valor Rompedor: Apenas números e vírgula (ex: 110.000,00).
+- Condição de pagamento: Detalhes do parcelamento.
+- FRETE: CIF ou FOB + Local (ex: FOB RECIFE, CIF GOIÂNIA).
+
+REGRAS CRÍTICAS:
+1. Retorne APENAS o JSON.
+2. Se não encontrar um dado, use "---".
+3. Use letras MAIÚSCULAS para tudo (exceto e-mail).
 """
         texto_final = ""
         if tipo == "audio":
-            log("Transcrevendo áudio com Whisper...")
+            log("Transcrevendo áudio...")
             with open(texto_ou_audio_path, "rb") as file:
                 transcription = client.audio.transcriptions.create(
                     file=(texto_ou_audio_path, file.read()),
@@ -51,13 +69,13 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
         else:
             texto_final = texto_ou_audio_path
 
-        # Monta o prompt para o Llama
         msg_sistema = {"role": "system", "content": prompt_base}
-        msg_usuario = {"role": "user", "content": f"Texto: {texto_final}"}
+        msg_usuario = {"role": "user", "content": f"Extraia os dados deste texto: {texto_final}"}
+        
         if prompt_personalizado:
-            msg_usuario["content"] = f"JSON ATUAL: {prompt_personalizado}. CORREÇÃO: {texto_final}"
+            msg_usuario["content"] = f"JSON ATUAL: {prompt_personalizado}\n\nCORREÇÃO DO USUÁRIO: {texto_final}\n\nRetorne o JSON com as correções aplicadas."
             
-        log("Extraindo dados com Llama 3.3...")
+        log("Extraindo JSON detalhado...")
         chat_completion = client.chat.completions.create(
             messages=[msg_sistema, msg_usuario],
             model="llama-3.3-70b-versatile",
@@ -66,7 +84,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
         )
         
         res = json.loads(chat_completion.choices[0].message.content)
-        if tipo == "audio" and "Transcricao" not in res:
+        if "Transcricao" not in res or res["Transcricao"] == "---":
             res["Transcricao"] = texto_final
         return res
     except Exception as e:
@@ -134,8 +152,7 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
                         break
                 tentativas = 0
 
-    # Se chegou aqui, é porque o Gemini falhou ou está sem cota
-    if status_callback: status_callback("🔄 Mudando para Backup (Groq)...")
+    if status_callback: status_callback("🔄 Usando Backup (Groq)...")
     res_groq = extrair_dados_proposta_groq(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
     if res_groq:
         return res_groq
