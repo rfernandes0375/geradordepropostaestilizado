@@ -41,6 +41,7 @@ from motor_pdf import (
 )
 
 FOLDER_ID_MODELOS = "1daF_KyzA1te7cMFBuKJaAzvYxX7D7gKu"
+PATH_PLANILHA_LOCAL = r"\\servidor-pc\C\JARDIM_EQUIPAMENTOS\COMERCIAL\PROPOSTAS\MODELOS DE PROPOSTAS 2024\Formulário propostas Rompedor.ods"
 
 def normalizar(texto):
     return re.sub(r'[^a-z0-9]', '', str(texto).lower())
@@ -110,7 +111,39 @@ def salvar_na_planilha_google(dados_proposta):
         worksheet.append_row(row_to_add)
         return True
     except Exception as e:
-        print(f"Erro planilha: {e}")
+        print(f"Erro planilha Google: {e}")
+        return False
+
+def salvar_na_planilha_local(dados_proposta):
+    """Salva uma cópia dos dados no arquivo .ods local do servidor"""
+    try:
+        import pandas as pd
+        if not os.path.exists(PATH_PLANILHA_LOCAL):
+            print(f"⚠️ Planilha local não encontrada: {PATH_PLANILHA_LOCAL}")
+            return False
+            
+        # Lê a planilha atual
+        df_local = pd.read_excel(PATH_PLANILHA_LOCAL, engine='odf')
+        
+        # Prepara a nova linha (mapeando colunas)
+        nova_linha = {}
+        hoje = datetime.today()
+        meses = {1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"}
+        data_formatada = f"Goiânia, {hoje.day} de {meses.get(hoje.month, '')} de {hoje.year}"
+        
+        for col in df_local.columns:
+            if col == "Data": nova_linha[col] = data_formatada
+            elif col == "Número": nova_linha[col] = dados_proposta.get("Número", "")
+            elif col == "NOME DO ARQUIVO": nova_linha[col] = f"JE {dados_proposta.get('Número', '')} - {dados_proposta.get('Cliente', '')}"
+            else: nova_linha[col] = dados_proposta.get(col, "")
+            
+        # Adiciona e salva
+        df_novo = pd.concat([df_local, pd.DataFrame([nova_linha])], ignore_index=True)
+        df_novo.to_excel(PATH_PLANILHA_LOCAL, engine='odf', index=False)
+        print("✅ Dados salvos na planilha local com sucesso!")
+        return True
+    except Exception as e:
+        print(f"⚠️ Erro ao salvar planilha local (Pode estar aberta): {e}")
         return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,7 +300,11 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = query.data.replace("file_", "")
         dados = context.user_data.get('dados_temp')
         await query.edit_message_text("⏳ Gerando proposta final...")
+        
+        # Gravação Dupla (Nuvem + Local)
         salvar_na_planilha_google(dados)
+        salvar_na_planilha_local(dados)
+        
         modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
         modelo_escolhido = next((m for m in modelos if m['id'] == file_id), None)
         modelo_bytes = baixar_arquivo_drive(modelo_escolhido['id'], modelo_escolhido['mimeType'])
