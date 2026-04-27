@@ -501,10 +501,18 @@ def formatar_valor_monetario(valor):
         return "R$ 0,00" # Retorna R$ 0,00 se a conversão falhar
 
 
+def formatar_data_extenso(data_obj=None):
+    """Formata a data no estilo: Goiânia, 27 de ABRIL de 2026"""
+    if not data_obj:
+        data_obj = datetime.today()
+    meses = {1: "JANEIRO", 2: "FEVEREIRO", 3: "MARÇO", 4: "ABRIL", 5: "MAIO", 6: "JUNHO", 7: "JULHO", 8: "AGOSTO", 9: "SETEMBRO", 10: "OUTUBRO", 11: "NOVEMBRO", 12: "DEZEMBRO"}
+    return f"Goiânia, {data_obj.day} de {meses.get(data_obj.month, '')} de {data_obj.year}"
+
+
 def criar_substituicoes(dados):
     """Prepara dicionário de substituições a partir de uma linha (dict) do DataFrame"""
     substituicoes = {}
-    data_hoje = datetime.today().strftime("%d/%m/%Y")
+    data_hoje = formatar_data_extenso()
 
     # Mapeamento dos placeholders para as colunas (considerando nomes exatos)
     mapeamento_placeholders = {
@@ -528,7 +536,7 @@ def criar_substituicoes(dados):
              if pd.isna(valor) or valor == "":
                   substituicoes[placeholder] = data_hoje
              elif isinstance(valor, datetime):
-                  substituicoes[placeholder] = valor.strftime("%d/%m/%Y")
+                  substituicoes[placeholder] = formatar_data_extenso(valor)
              else:
                   # Tenta converter string para data, se falhar usa o valor como está ou data de hoje
                   try:
@@ -536,7 +544,7 @@ def criar_substituicoes(dados):
                        if pd.isna(data_obj):
                             substituicoes[placeholder] = str(valor) if valor else data_hoje
                        else:
-                            substituicoes[placeholder] = data_obj.strftime("%d/%m/%Y")
+                            substituicoes[placeholder] = formatar_data_extenso(data_obj)
                   except Exception:
                        substituicoes[placeholder] = str(valor) if valor else data_hoje
         # Para outros campos, apenas converte para string
