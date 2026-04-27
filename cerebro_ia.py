@@ -59,7 +59,8 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
                 
                 if response and response.text:
                     print(f"IA: Sucesso com {nome_modelo}!")
-                    return json.loads(response.text.replace("```json", "").replace("```", "").strip())
+                    res = json.loads(response.text.replace("```json", "").replace("```", "").strip())
+                    return res[0] if isinstance(res, list) and len(res) > 0 else res
 
             except Exception as e:
                 erro_str = str(e)
