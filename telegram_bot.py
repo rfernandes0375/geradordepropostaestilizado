@@ -329,7 +329,7 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await loop.run_in_executor(None, lambda: salvar_na_planilha_google(dados, callback))
         await loop.run_in_executor(None, lambda: salvar_na_planilha_local(dados, callback))
         
-        callback("Bixando modelo do Drive...")
+        callback("Baixando modelo do Drive...")
         modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
         modelo_escolhido = next((m for m in modelos if m['id'] == file_id), None)
         modelo_bytes = baixar_arquivo_drive(modelo_escolhido['id'], modelo_escolhido['mimeType'])
@@ -348,22 +348,36 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp.write(pdf_bytes)
                 tmp_path = tmp.name
-            with open(tmp_path, "rb") as f:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=f, filename=f"{nome_arquivo}.pdf")
-            os.unlink(tmp_path)
-            await query.delete_message()
+            
+            callback("Enviando documento...")
+            try:
+                with open(tmp_path, "rb") as f:
+                    # Aumentado timeout para 120s para garantir o upload
+                    await context.bot.send_document(
+                        chat_id=query.message.chat_id, 
+                        document=f, 
+                        filename=f"{nome_arquivo}.pdf",
+                        connect_timeout=60,
+                        read_timeout=120,
+                        write_timeout=120
+                    )
+                os.unlink(tmp_path)
+                await query.delete_message()
+            except Exception as e:
+                await query.edit_message_text(f"❌ Erro no envio: {e}")
         else:
-            await query.edit_message_text("❌ Falha no PDF.")
+            await query.edit_message_text("❌ Falha na conversão do PDF.")
 
 def main():
     token = DummyStreamlit.secrets.get("telegram", {}).get("bot_token")
     if not token: return
-    app = Application.builder().token(token).build()
+    # Aumentando timeouts globais da aplicação
+    app = Application.builder().token(token).connect_timeout(60).read_timeout(120).write_timeout(120).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(CallbackQueryHandler(on_button_click))
-    print("🚀 Robô Online com Status em Tempo Real!")
+    print("🚀 Robô Online com Status e Timeouts Ajustados!")
     app.run_polling()
 
 if __name__ == "__main__":
