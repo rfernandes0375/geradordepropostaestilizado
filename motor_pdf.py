@@ -489,16 +489,24 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
 
 
 def formatar_valor_monetario(valor):
-    """Formata um valor como moeda brasileira (R$)"""
+    """Formata um valor como moeda brasileira (R$) - Robusto"""
     try:
-        # Tenta converter para float, tratando vírgula como separador decimal se necessário
-        if isinstance(valor, str):
-            valor = valor.replace('.', '').replace(',', '.')
-        valor_float = float(valor)
+        if valor is None or str(valor).strip() in ("", "---", "nan"):
+            return "R$ 0,00"
+            
+        # Limpeza total: remove R$, espaços e pontos de milhar
+        v_limpo = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+        
+        # Se após a limpeza sobrar algo que não seja número ou ponto, tenta extrair só os números
+        v_limpo = re.sub(r'[^0-9.]', '', v_limpo)
+        
+        if not v_limpo: return "R$ 0,00"
+        
+        valor_float = float(v_limpo)
         # Formatação padrão brasileira
         return f"R$ {valor_float:,.2f}".replace(',', 'v').replace('.', ',').replace('v', '.')
-    except (ValueError, TypeError):
-        return "R$ 0,00" # Retorna R$ 0,00 se a conversão falhar
+    except Exception:
+        return "R$ 0,00"
 
 
 def formatar_data_extenso(data_obj=None):
