@@ -85,9 +85,10 @@ def criar_callback_status(context, chat_id, message_id, loop):
             pass
     return callback
 
-def salvar_na_planilha_google(dados_proposta, status_callback=None):
+def salvar_na_planilha_google(dados_proposta, row_idx=None, status_callback=None):
     if not dados_proposta: return False
-    if status_callback: status_callback("Salvando no Google Sheets...")
+    msg = "Atualizando Google Sheets..." if row_idx else "Salvando no Google Sheets..."
+    if status_callback: status_callback(msg)
     try:
         if "google_cloud" not in DummyStreamlit.secrets: return False
         gc = gspread.service_account_from_dict(DummyStreamlit.secrets["google_cloud"])
@@ -96,7 +97,8 @@ def salvar_na_planilha_google(dados_proposta, status_callback=None):
         headers = worksheet.row_values(1)
         row_to_add = []
         
-        if "Número" in headers:
+        # Se for nova proposta, gera número. Se for edição, mantém o que veio.
+        if not row_idx and "Número" in headers:
             idx_num = headers.index("Número") + 1
             col_nums = worksheet.col_values(idx_num)
             ultimo = col_nums[-1] if len(col_nums) > 1 else ""
@@ -109,7 +111,7 @@ def salvar_na_planilha_google(dados_proposta, status_callback=None):
                     dados_proposta["Número"] = datetime.now().strftime("%H%M")
             else:
                 dados_proposta["Número"] = datetime.now().strftime("%H%M")
-        else:
+        elif not row_idx:
             dados_proposta["Número"] = datetime.now().strftime("%H%M")
 
         for h in headers:
@@ -124,13 +126,42 @@ def salvar_na_planilha_google(dados_proposta, status_callback=None):
             else:
                  row_to_add.append(str(dados_proposta.get(h, "")))
                  
-        worksheet.append_row(row_to_add)
+        if row_idx:
+            worksheet.update(f"A{row_idx}", [row_to_add])
+        else:
+            worksheet.append_row(row_to_add)
+            
         if status_callback: status_callback("✅ Google Sheets OK!")
         return True
     except Exception as e:
         print(f"Erro planilha Google: {e}")
         if status_callback: status_callback(f"⚠️ Erro Google Sheets: {e}")
         return False
+
+def buscar_propostas_planilha(termo=None, limite=10):
+    """Busca propostas na planilha Google. Se termo for None, traz as últimas."""
+    try:
+        if "google_cloud" not in DummyStreamlit.secrets: return []
+        gc = gspread.service_account_from_dict(DummyStreamlit.secrets["google_cloud"])
+        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1CkllnC9xWKzZEnB_bKFRuNY5dsu1FoGRF5phdHirjbs/edit?gid=465824771#gid=465824771")
+        worksheet = sh.get_worksheet_by_id(465824771)
+        
+        all_rows = worksheet.get_all_records()
+        if not all_rows: return []
+
+        # Adiciona o índice da linha (1-based, +1 para o header)
+        for i, row in enumerate(all_rows):
+            row['_row_idx'] = i + 2 
+
+        if termo:
+            termo = normalizar(termo)
+            resultados = [r for r in all_rows if termo in normalizar(r.get('Cliente', '')) or termo in str(r.get('Número', '')).lower()]
+            return resultados[-limite:]
+        
+        return all_rows[-limite:]
+    except Exception as e:
+        print(f"Erro ao buscar propostas: {e}")
+        return []
 
 def salvar_na_planilha_local(dados_proposta, status_callback=None):
     if not dados_proposta: return False
@@ -226,6 +257,9 @@ async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("⬅️ Voltar para Edição", callback_data="voltar_edicao")])
     await query.edit_message_text("🎯 **Selecione o Modelo de Proposta:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
+    await msg_wait.delete()
+    await exibir_resumo_edicao(update, context)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_authorized(user.id): return
@@ -238,6 +272,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['dados_temp'][waiting_field] = val
         context.user_data['waiting_for'] = None
         await exibir_resumo_edicao(update, context)
+        return
+
+    # Lógica de Busca/Listagem
+    txt_norm = texto_usuario.lower()
+    if any(palavra in txt_norm for palavra in ["listar", "propostas", "ultimas", "últimas", "buscar", "pesquisar"]):
+        msg_wait = await update.message.reply_text("🔍 Buscando na planilha...")
+        loop = asyncio.get_event_loop()
+        
+        termo_busca = None
+        if "buscar" in txt_norm or "pesquisar" in txt_norm:
+            termo_busca = txt_norm.replace("buscar", "").replace("pesquisar", "").strip()
+        
+        propostas = await loop.run_in_executor(None, lambda: buscar_propostas_planilha(termo_busca))
+        await msg_wait.delete()
+
+        if not propostas:
+            await update.message.reply_text("❌ Nenhuma proposta encontrada.")
+            return
+
+        keyboard = []
+        # Inverte para mostrar as mais recentes primeiro
+        for p in reversed(propostas):
+            num = p.get('Número', '---')
+            cli = p.get('Cliente', '---')
+            equi = p.get('Modelo', '---')
+            idx = p.get('_row_idx')
+            btn_text = f"{num} - {cli} - {equi}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"load_{idx}")])
+        
+        await update.message.reply_text("📋 **Selecione uma proposta para gerenciar:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return
 
     msg_wait = await update.message.reply_text("⏳ Iniciando IA...")
@@ -310,6 +374,27 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['waiting_for'] = campo
         await query.edit_message_text(f"📝 Digite o novo valor para **{campo}**:")
         return
+    if query.data.startswith("load_"):
+        idx = int(query.data.replace("load_", ""))
+        msg_wait = await query.edit_message_text("⏳ Carregando dados da proposta...")
+        
+        try:
+            gc = gspread.service_account_from_dict(DummyStreamlit.secrets["google_cloud"])
+            sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1CkllnC9xWKzZEnB_bKFRuNY5dsu1FoGRF5phdHirjbs/edit?gid=465824771#gid=465824771")
+            worksheet = sh.get_worksheet_by_id(465824771)
+            row_data = worksheet.row_values(idx)
+            headers = worksheet.row_values(1)
+            
+            dados = {headers[i]: row_data[i] if i < len(row_data) else "" for i in range(len(headers))}
+            context.user_data['dados_temp'] = dados
+            context.user_data['edit_row_idx'] = idx # Marca que estamos editando uma linha existente
+            
+            await msg_wait.delete()
+            await exibir_resumo_edicao(update, context)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Erro ao carregar: {e}")
+        return
+
     if query.data == "confirmar_tudo":
         await exibir_selecao_modelo(query, context)
         return
@@ -325,8 +410,12 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loop = asyncio.get_event_loop()
         callback = criar_callback_status(context, query.message.chat_id, msg_wait.message_id, loop)
 
+        # Verifica se é uma edição/revisão
+        row_idx = context.user_data.get('edit_row_idx')
+
         # Gravação Dupla (Nuvem + Local) com logs
-        await loop.run_in_executor(None, lambda: salvar_na_planilha_google(dados, callback))
+        await loop.run_in_executor(None, lambda: salvar_na_planilha_google(dados, row_idx, callback))
+        # No local, por enquanto, apenas adicionamos (mais complexo atualizar ODS via rede)
         await loop.run_in_executor(None, lambda: salvar_na_planilha_local(dados, callback))
         
         callback("Baixando modelo do Drive...")
@@ -342,6 +431,18 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         callback("Convertendo para PDF...")
         nome_arquivo = f"JE {dados.get('Número')} - {dados.get('Cliente', 'Proposta')}"
+        
+        # Lógica de Revisão no Nome do Arquivo
+        if row_idx:
+            # Tenta encontrar se já existe uma revisão no nome
+            # Ex: JE 852 - Cliente_REV01 -> JE 852 - Cliente_REV02
+            match = re.search(r'_REV(\d+)', nome_arquivo)
+            if match:
+                rev_atual = int(match.group(1))
+                nome_arquivo = re.sub(r'_REV\d+', f'_REV{rev_atual + 1:02d}', nome_arquivo)
+            else:
+                nome_arquivo += "_REV01"
+
         pdf_bytes = converter_para_pdf(odt_modificado, nome_arquivo)
 
         if pdf_bytes:
