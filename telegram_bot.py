@@ -389,7 +389,6 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['dados_temp'] = dados
             context.user_data['edit_row_idx'] = idx # Marca que estamos editando uma linha existente
             
-            await msg_wait.delete()
             await exibir_resumo_edicao(update, context)
         except Exception as e:
             await query.edit_message_text(f"❌ Erro ao carregar: {e}")
