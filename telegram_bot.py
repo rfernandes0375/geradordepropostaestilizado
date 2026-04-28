@@ -489,6 +489,7 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 os.unlink(tmp_path)
                 await query.delete_message()
+                context.user_data.clear() # Limpa a memória para a próxima proposta
             except Exception as e:
                 await query.edit_message_text(f"❌ Erro no envio: {e}")
         else:
