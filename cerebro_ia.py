@@ -47,6 +47,7 @@ Sua missão é ler um texto ou transcrição e retornar um JSON com estes campos
 - TIPO DE MÁQUINA: Ex: ESCAVADEIRA, RETROESCAVADEIRA.
 - MODELO DE MÁQUINA: Ex: KOMATSU PC200, CAT 320.
 - Valor Rompedor: Apenas números e vírgula (ex: 110.000,00).
+- Valor Kit: Apenas números e vírgula (ex: 15.500,00).
 - Condição de pagamento: Detalhes do parcelamento.
 - FRETE: CIF ou FOB + Local (ex: FOB RECIFE, CIF GOIÂNIA).
 
@@ -101,7 +102,7 @@ def extrair_dados_proposta_gemini(texto_ou_audio_path, tipo="texto", prompt_pers
 
     prompt_base = """
 Você é um assistente comercial da Jardim Equipamentos. Extraia os dados e gere um JSON.
-Campos: Transcricao, Cliente, Cidade, Estado, Nome, Email, Telefone, Modelo, TIPO DE MÁQUINA, MODELO DE MÁQUINA, Valor Rompedor, Condição de pagamento, FRETE.
+Campos: Transcricao, Cliente, Cidade, Estado, Nome, Email, Telefone, Modelo, TIPO DE MÁQUINA, MODELO DE MÁQUINA, Valor Rompedor, Valor Kit, Condição de pagamento, FRETE.
 Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas números e vírgula.
 """
     modelos = ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"]

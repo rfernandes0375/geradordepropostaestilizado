@@ -212,6 +212,7 @@ async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYP
         f"🏗️ **Tipo Máq:** {dados.get('TIPO DE MÁQUINA', '---')}\n"
         f"🚜 **Mod. Máq:** {dados.get('MODELO DE MÁQUINA', '---')}\n"
         f"💰 **Valor Romp:** R$ {dados.get('Valor Rompedor', '---')}\n"
+        f"🛠️ **Valor Kit:** R$ {dados.get('Valor Kit', '---')}\n"
         f"💳 **Pagamento:** {dados.get('Condição de pagamento', '---')}\n"
         f"🚚 **Frete:** {dados.get('FRETE', '---')}\n\n"
         "💡 *Dica: Digite a correção direto no chat ou use os botões:* "
@@ -222,8 +223,8 @@ async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("👤 Contato", callback_data="edit_Nome"), InlineKeyboardButton("📞 Fone", callback_data="edit_Telefone")],
         [InlineKeyboardButton("📧 E-mail", callback_data="edit_Email"), InlineKeyboardButton("🛠️ Equipamento", callback_data="edit_Modelo")],
         [InlineKeyboardButton("🏗️ Tipo Máq", callback_data="edit_TIPO DE MÁQUINA"), InlineKeyboardButton("🚜 Mod. Máq", callback_data="edit_MODELO DE MÁQUINA")],
-        [InlineKeyboardButton("💰 Valor", callback_data="edit_Valor Rompedor"), InlineKeyboardButton("💳 Pagamento", callback_data="edit_Condição de pagamento")],
-        [InlineKeyboardButton("🚚 Frete", callback_data="edit_FRETE")],
+        [InlineKeyboardButton("💰 Valor Romp", callback_data="edit_Valor Rompedor"), InlineKeyboardButton("🛠️ Valor Kit", callback_data="edit_Valor Kit")],
+        [InlineKeyboardButton("💳 Pagamento", callback_data="edit_Condição de pagamento"), InlineKeyboardButton("🚚 Frete", callback_data="edit_FRETE")],
         [InlineKeyboardButton("🚀 CONFIRMAR TUDO", callback_data="confirmar_tudo")],
         [InlineKeyboardButton("❌ Limpar Tudo", callback_data="cancelar")]
     ]
@@ -264,7 +265,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_field = context.user_data.get('waiting_for')
     
     if waiting_field:
-        if waiting_field == "Valor Rompedor": texto_usuario = re.sub(r'[^0-9,]', '', texto_usuario)
+        if waiting_field in ["Valor Rompedor", "Valor Kit"]: texto_usuario = re.sub(r'[^0-9,]', '', texto_usuario)
         val = texto_usuario.lower() if waiting_field == "Email" else texto_usuario.upper()
         context.user_data['dados_temp'][waiting_field] = val
         context.user_data['waiting_for'] = None
@@ -307,17 +308,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(texto_usuario, "texto", contexto_atual, callback))
-        for k, v in dados_novos.items():
-            if v and v != "---" and k != "Transcricao":
-                if k == "Estado": val = normalizar_uf(v)
-                elif k == "Email": val = str(v).lower()
-                else: val = v
                 context.user_data['dados_temp'][k] = val
+        
+        # Lógica de Alias para KIT
+        dt = context.user_data['dados_temp']
+        if "KIT" in str(dt.get("Modelo", "")).upper():
+            if dt.get("Valor Rompedor") and (not dt.get("Valor Kit") or dt.get("Valor Kit") == "---"):
+                dt["Valor Kit"] = dt["Valor Rompedor"]
+                dt["Valor Rompedor"] = "---"
     else:
         dados = await loop.run_in_executor(None, lambda: extrair_dados_proposta(texto_usuario, "texto", None, callback))
         if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
         if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
+        
+        # Lógica de Alias para KIT (Nova Proposta)
+        if "KIT" in str(dados.get("Modelo", "")).upper():
+            if dados.get("Valor Rompedor") and (not dados.get("Valor Kit") or dados.get("Valor Kit") == "---"):
+                dados["Valor Kit"] = dados["Valor Rompedor"]
+                dados["Valor Rompedor"] = "---"
+        
         context.user_data['dados_temp'] = dados
 
     await msg_wait.delete()
@@ -337,17 +346,25 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
-        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(tmp_path, "audio", contexto_atual, callback))
-        for k, v in dados_novos.items():
-            if v and v != "---" and k != "Transcricao":
-                if k == "Estado": val = normalizar_uf(v)
-                elif k == "Email": val = v.lower()
-                else: val = v
                 context.user_data['dados_temp'][k] = val
+        
+        # Lógica de Alias para KIT
+        dt = context.user_data['dados_temp']
+        if "KIT" in str(dt.get("Modelo", "")).upper():
+            if dt.get("Valor Rompedor") and (not dt.get("Valor Kit") or dt.get("Valor Kit") == "---"):
+                dt["Valor Kit"] = dt["Valor Rompedor"]
+                dt["Valor Rompedor"] = "---"
     else:
         dados = await loop.run_in_executor(None, lambda: extrair_dados_proposta(tmp_path, "audio", None, callback))
         if "Estado" in dados: dados["Estado"] = normalizar_uf(dados["Estado"])
         if "Email" in dados: dados["Email"] = str(dados["Email"]).lower()
+        
+        # Lógica de Alias para KIT (Nova Proposta)
+        if "KIT" in str(dados.get("Modelo", "")).upper():
+            if dados.get("Valor Rompedor") and (not dados.get("Valor Kit") or dados.get("Valor Kit") == "---"):
+                dados["Valor Kit"] = dados["Valor Rompedor"]
+                dados["Valor Rompedor"] = "---"
+                
         context.user_data['dados_temp'] = dados
 
     os.unlink(tmp_path)
