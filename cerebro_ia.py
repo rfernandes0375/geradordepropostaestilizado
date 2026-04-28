@@ -136,17 +136,17 @@ Use MAIÚSCULAS. No FRETE inclua o local (ex: FOB RECIFE). No VALOR use apenas n
     return None
 
 def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personalizado=None, status_callback=None):
-    """INÍCIO PELA GROQ (Mais rápida e estável agora)"""
+    """INÍCIO PELA GEMINI (Motor principal)"""
     
-    # 1. Tenta Groq primeiro
-    res = extrair_dados_proposta_groq(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
+    # 1. Tenta Gemini primeiro
+    res = extrair_dados_proposta_gemini(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
     if res and "erro" not in res:
         return res
         
-    # 2. Se a Groq falhar, tenta Gemini como reserva
-    if status_callback: status_callback("🔄 Groq falhou, tentando reserva (Gemini)...")
-    res_gemini = extrair_dados_proposta_gemini(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
-    if res_gemini:
-        return res_gemini
+    # 2. Se a Gemini falhar, tenta Groq como reserva
+    if status_callback: status_callback("🔄 Gemini falhou, tentando reserva (Groq)...")
+    res_groq = extrair_dados_proposta_groq(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
+    if res_groq:
+        return res_groq
 
     return {"erro": "Todas as IAs estão fora do ar ou sem cota."}

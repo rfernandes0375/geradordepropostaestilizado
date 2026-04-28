@@ -127,7 +127,7 @@ def salvar_na_planilha_google(dados_proposta, row_idx=None, status_callback=None
                  row_to_add.append(str(dados_proposta.get(h, "")))
                  
         if row_idx:
-            worksheet.update(values=[row_to_add], range_name=f"A{row_idx}")
+            worksheet.update(range_name=f"A{row_idx}", values=[row_to_add])
         else:
             worksheet.append_row(row_to_add)
             
