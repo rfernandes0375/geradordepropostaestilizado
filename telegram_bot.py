@@ -127,7 +127,7 @@ def salvar_na_planilha_google(dados_proposta, row_idx=None, status_callback=None
                  row_to_add.append(str(dados_proposta.get(h, "")))
                  
         if row_idx:
-            worksheet.update(f"A{row_idx}", [row_to_add])
+            worksheet.update(values=[row_to_add], range_name=f"A{row_idx}")
         else:
             worksheet.append_row(row_to_add)
             
@@ -256,9 +256,6 @@ async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton(f"{'✅ ' if score > 0 else ''}{m['name']}", callback_data=f"file_{m['id']}")] for score, m in ranking[:6]]
     keyboard.append([InlineKeyboardButton("⬅️ Voltar para Edição", callback_data="voltar_edicao")])
     await query.edit_message_text("🎯 **Selecione o Modelo de Proposta:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    await msg_wait.delete()
-    await exibir_resumo_edicao(update, context)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
