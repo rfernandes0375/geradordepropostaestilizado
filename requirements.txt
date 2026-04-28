@@ -5,6 +5,9 @@ pandas
 google-generativeai
 groq
 toml
-odfpy
 requests
-google-genai
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+st-gsheets-connection
+weasyprint
