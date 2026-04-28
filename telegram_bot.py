@@ -308,6 +308,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
+        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(texto_usuario, "texto", contexto_atual, callback))
+        for k, v in dados_novos.items():
+            if v and v != "---" and k != "Transcricao":
+                if k == "Estado": val = normalizar_uf(v)
+                elif k == "Email": val = str(v).lower()
+                else: val = v
                 context.user_data['dados_temp'][k] = val
         
         # Lógica de Alias para KIT
@@ -346,6 +352,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data.get('dados_temp'):
         contexto_atual = json.dumps(context.user_data['dados_temp'])
+        dados_novos = await loop.run_in_executor(None, lambda: extrair_dados_proposta(tmp_path, "audio", contexto_atual, callback))
+        for k, v in dados_novos.items():
+            if v and v != "---" and k != "Transcricao":
+                if k == "Estado": val = normalizar_uf(v)
+                elif k == "Email": val = v.lower()
+                else: val = v
                 context.user_data['dados_temp'][k] = val
         
         # Lógica de Alias para KIT
