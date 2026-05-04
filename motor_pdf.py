@@ -407,29 +407,11 @@ def converter_para_pdf_python(odt_bytes):
     return pdf_bytes
 
 
-def converter_para_pdf(odt_bytes, nome_arquivo_base):
+def _converter_via_libreoffice(odt_bytes):
     """
-    Converte ODT para PDF com três estratégias em cascata:
-    1. Google Drive API — qualidade idêntica ao template (conta nova com quota zerada)
-    2. Python nativo (weasyprint) — sem layout mas funciona
-    3. LibreOffice local — fallback desenvolvimento local
+    Converte ODT para PDF usando LibreOffice instalado localmente (headless).
+    Retorna bytes do PDF ou None se falhar.
     """
-    # --- Tentativa 1: Google Drive API (qualidade perfeita) ---
-    if "google_cloud" in st.secrets or "oauth2_drive" in st.secrets:
-        resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
-        if resultado:
-            return resultado
-        st.warning("⚠️ Falha na conversão via Google Drive. Tentando conversão Python...")
-
-    # --- Tentativa 2: Python nativo (sem layout perfeito, mas funciona) ---
-    try:
-        resultado = converter_para_pdf_python(odt_bytes)
-        if resultado:
-            return resultado
-    except Exception as e:
-        st.warning(f"⚠️ Conversão Python nativa falhou ({e}). Tentando LibreOffice local...")
-
-    # --- Tentativa 3: LibreOffice local (dev local) ---
     libreoffice_path = None
     for path in [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
@@ -443,8 +425,7 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
             break
 
     if not libreoffice_path:
-        st.error("⚠️ Nenhum método de conversão disponível. Instale o LibreOffice ou configure o Google Drive.")
-        return None
+        return None  # LibreOffice não instalado
 
     temp_odt_path = None
     pdf_path = None
@@ -455,9 +436,15 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
 
         temp_pdf_dir = tempfile.gettempdir()
         profile_dir = os.path.join(temp_pdf_dir, f"lo_profile_{os.getpid()}")
+        # Converte URI do perfil conforme OS
+        if os.name == 'nt':
+            profile_uri = 'file:///' + profile_dir.replace('\\', '/')
+        else:
+            profile_uri = 'file://' + profile_dir
+
         comando = [
             libreoffice_path,
-            f'-env:UserInstallation=file://{profile_dir}',
+            f'-env:UserInstallation={profile_uri}',
             '--headless', '--norestore', '--nofirststartwizard',
             '--convert-to', 'pdf',
             '--outdir', temp_pdf_dir,
@@ -466,26 +453,72 @@ def converter_para_pdf(odt_bytes, nome_arquivo_base):
         env_config = os.environ.copy()
         env_config['HOME'] = temp_pdf_dir
 
-        process = subprocess.Popen(comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env_config, shell=(os.name == 'nt'))
+        process = subprocess.Popen(
+            comando,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env_config,
+            shell=(os.name == 'nt')
+        )
         stdout, stderr = process.communicate(timeout=120)
 
         pdf_filename = os.path.basename(temp_odt_path).replace('.odt', '.pdf')
         pdf_path = os.path.join(temp_pdf_dir, pdf_filename)
 
         if not os.path.exists(pdf_path):
-            raise Exception(f"PDF não gerado. Stderr: {stderr.decode('utf-8', errors='ignore')}")
+            err_msg = stderr.decode('utf-8', errors='ignore')
+            raise Exception(f"PDF não gerado pelo LibreOffice. Stderr: {err_msg}")
 
         with open(pdf_path, 'rb') as f:
             return f.read()
 
     except Exception as e:
-        st.error(f"Falha na conversão local via LibreOffice: {str(e)}")
+        st.warning(f"⚠️ LibreOffice falhou: {str(e)}")
         return None
     finally:
         if temp_odt_path and os.path.exists(temp_odt_path):
             os.unlink(temp_odt_path)
         if pdf_path and os.path.exists(pdf_path):
             os.unlink(pdf_path)
+
+
+def converter_para_pdf(odt_bytes, nome_arquivo_base):
+    """
+    Converte ODT para PDF com três estratégias em cascata:
+    1. LibreOffice local — qualidade fiel ao template, sem depender de quota do Drive
+    2. Google Drive API — fallback em nuvem (limpa quota antes do upload)
+    3. Python nativo (weasyprint) — último recurso, layout simplificado
+    """
+    # --- Tentativa 1: LibreOffice local (preferido — fiel ao template, sem quota) ---
+    resultado = _converter_via_libreoffice(odt_bytes)
+    if resultado:
+        return resultado
+
+    # --- Tentativa 2: Google Drive API (fallback nuvem) ---
+    if "google_cloud" in st.secrets or "oauth2_drive" in st.secrets:
+        # Limpa arquivos antigos da conta de serviço antes de tentar upload
+        try:
+            service_limpeza = get_google_drive_service()
+            if service_limpeza:
+                _limpar_drive_conta_servico(service_limpeza)
+        except Exception:
+            pass
+
+        resultado = converter_para_pdf_drive(odt_bytes, nome_arquivo_base)
+        if resultado:
+            return resultado
+        st.warning("⚠️ Falha na conversão via Google Drive. Tentando conversão Python...")
+
+    # --- Tentativa 3: Python nativo (weasyprint) — sem layout perfeito ---
+    try:
+        resultado = converter_para_pdf_python(odt_bytes)
+        if resultado:
+            return resultado
+    except Exception as e:
+        st.warning(f"⚠️ Conversão Python nativa falhou: {e}")
+
+    st.error("❌ Nenhum método de conversão funcionou (LibreOffice, Drive API e weasyprint falharam).")
+    return None
 
 
 def formatar_valor_monetario(valor):
