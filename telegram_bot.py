@@ -127,7 +127,7 @@ def salvar_na_planilha_google(dados_proposta, row_idx=None, status_callback=None
                  row_to_add.append(str(dados_proposta.get(h, "")))
                  
         if row_idx:
-            worksheet.update(range_name=f"A{row_idx}", values=[row_to_add])
+            worksheet.update(values=[row_to_add], range_name=f"A{row_idx}")
         else:
             worksheet.append_row(row_to_add)
             
@@ -265,6 +265,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_field = context.user_data.get('waiting_for')
     
     if waiting_field:
+        # Segurança: se o bot reiniciou, dados_temp pode ter sumido
+        if not context.user_data.get('dados_temp'):
+            context.user_data.clear()
+            await update.message.reply_text(
+                "⚠️ Sessão expirada (bot foi reiniciado).\n"
+                "Por favor, envie a proposta novamente."
+            )
+            return
         if waiting_field in ["Valor Rompedor", "Valor Kit"]: texto_usuario = re.sub(r'[^0-9,]', '', texto_usuario)
         val = texto_usuario.lower() if waiting_field == "Email" else texto_usuario.upper()
         context.user_data['dados_temp'][waiting_field] = val
