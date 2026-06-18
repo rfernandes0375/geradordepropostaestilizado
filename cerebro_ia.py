@@ -81,13 +81,12 @@ def extrair_dados_proposta_openrouter(texto, prompt_personalizado=None, status_c
     ]
 
     # Modelos gratuitos disponíveis no OpenRouter (em ordem de preferência)
-    # Ordem baseada em testes reais de disponibilidade (17/06/2026)
     modelos = [
-        "nvidia/nemotron-3-ultra-550b-a55b:free",   # confirmado funcionando
-        "meta-llama/llama-3.3-70b-instruct:free",   # fallback — pode ter rate limit
-        "google/gemma-4-31b-it:free",               # fallback — pode ter rate limit
-        "qwen/qwen3-next-80b-a3b-instruct:free",    # fallback — pode ter rate limit
-        "openai/gpt-oss-120b:free",                 # fallback adicional
+        "openrouter/free",                           # 1º — roteador automático (sem manutenção!)
+        "nvidia/nemotron-3-ultra-550b-a55b:free",    # 2º — confirmado funcionando
+        "nousresearch/hermes-3-llama-3.1-405b:free", # 3º — especialista em JSON estruturado
+        "nvidia/nemotron-3-super-120b-a12b:free",    # 4º — qualidade alta, 120B
+        "meta-llama/llama-3.3-70b-instruct:free",    # 5º — fallback conhecido
     ]
 
     for modelo in modelos:
@@ -186,8 +185,8 @@ def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personaliza
     """
     Ponto de entrada principal. Cascata de IAs:
 
-    TEXTO → OpenRouter (principal, gratuito, multi-modelo)
-           → Gemini (fallback se OpenRouter falhar)
+    TEXTO → Gemini (primário, melhor qualidade)
+           → OpenRouter (fallback se Gemini estiver sem cota/fora do ar)
 
     ÁUDIO → Gemini (único motor com suporte multimodal nativo)
     """
@@ -198,15 +197,15 @@ def extrair_dados_proposta(texto_ou_audio_path, tipo="texto", prompt_personaliza
             return res
         return {"erro": "IA indisponível para áudio. Envie os dados por texto."}
 
-    # Texto: OpenRouter primeiro
-    res = extrair_dados_proposta_openrouter(texto_ou_audio_path, prompt_personalizado, status_callback)
+    # Texto: Tenta Gemini primeiro
+    res = extrair_dados_proposta_gemini(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
     if res and "erro" not in res:
         return res
 
-    # Fallback: Gemini
+    # Fallback: OpenRouter
     if status_callback:
-        status_callback("🔄 OpenRouter indisponível, tentando Gemini...")
-    res = extrair_dados_proposta_gemini(texto_ou_audio_path, tipo, prompt_personalizado, status_callback)
+        status_callback("🔄 Gemini indisponível (cota excedida?), tentando OpenRouter...")
+    res = extrair_dados_proposta_openrouter(texto_ou_audio_path, prompt_personalizado, status_callback)
     if res and "erro" not in res:
         return res
 
