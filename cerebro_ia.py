@@ -134,7 +134,7 @@ def extrair_dados_proposta_gemini(texto_ou_audio_path, tipo="texto", prompt_pers
         print(f"IA (Gemini): {msg}")
         if status_callback: status_callback(f"🧠 IA (Gemini): {msg}")
 
-    modelos = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+    modelos = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
 
     for nome_modelo in modelos:
         try:
