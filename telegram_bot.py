@@ -253,7 +253,26 @@ async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYP
 async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     dados = context.user_data.get('dados_temp')
     await query.edit_message_text("⏳ Buscando modelos no Drive...")
-    modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
+    
+    # Tenta até 2x em caso de timeout de rede
+    modelos = None
+    for tentativa in range(2):
+        try:
+            modelos = listar_modelos_google_drive(FOLDER_ID_MODELOS)
+            break
+        except Exception as e:
+            print(f"Erro ao listar Drive (tentativa {tentativa+1}): {e}")
+            if tentativa == 0:
+                await query.edit_message_text("⏳ Rede instável, tentando novamente...")
+                import asyncio
+                await asyncio.sleep(3)
+    
+    if not modelos:
+        keyboard = [[InlineKeyboardButton("🔄 Tentar Novamente", callback_data="confirmar_tudo")],
+                     [InlineKeyboardButton("⬅️ Voltar para Edição", callback_data="voltar_edicao")]]
+        await query.edit_message_text("❌ Não foi possível conectar ao Drive. Verifique a internet do servidor.",
+                                      reply_markup=InlineKeyboardMarkup(keyboard))
+        return
     
     palavras_busca = []
     for t in [dados.get("Modelo", ""), dados.get("MODELO DE MÁQUINA", ""), dados.get("TIPO DE MÁQUINA", "")]:
@@ -421,7 +440,7 @@ async def on_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("edit_"):
         campo = query.data.replace("edit_", "")
         context.user_data['waiting_for'] = campo
-        await query.edit_message_text(f"📝 Digite o novo valor para **{campo}**:")
+        await query.edit_message_text(f"📝 Digite o novo valor para <b>{campo}</b>:", parse_mode="HTML")
         return
     if query.data.startswith("load_"):
         idx = int(query.data.replace("load_", ""))
