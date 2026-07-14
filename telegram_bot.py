@@ -197,25 +197,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("👋 Robô Comercial Pronto!")
 
+def _escape_html(text):
+    """Escapa caracteres especiais de HTML para uso seguro no Telegram."""
+    s = str(text) if text else "---"
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dados = context.user_data.get('dados_temp')
     if not dados: return
 
+    # Usa HTML ao invés de Markdown para evitar erros com caracteres
+    # especiais nos dados (ex: _ em emails como rac_alencastro@hotmail.com)
     resumo = (
-        "📝 **Conferência de Proposta:**\n\n"
-        f"🏢 **Cliente:** {dados.get('Cliente', '---')}\n"
-        f"📍 **Cidade/UF:** {dados.get('Cidade', '---')} / {dados.get('Estado', '---')}\n"
-        f"👤 **Contato:** {dados.get('Nome', '---')}\n"
-        f"📞 **Fone:** {dados.get('Telefone', '---')}\n"
-        f"📧 **E-mail:** {dados.get('Email', '---')}\n"
-        f"🛠️ **Equipamento:** {dados.get('Modelo', '---')}\n"
-        f"🏗️ **Tipo Máq:** {dados.get('TIPO DE MÁQUINA', '---')}\n"
-        f"🚜 **Mod. Máq:** {dados.get('MODELO DE MÁQUINA', '---')}\n"
-        f"💰 **Valor Romp:** {dados.get('Valor Rompedor', '---')}\n"
-        f"🛠️ **Valor Kit:** {dados.get('Valor Kit', '---')}\n"
-        f"💳 **Pagamento:** {dados.get('Condição de pagamento', '---')}\n"
-        f"🚚 **Frete:** {dados.get('FRETE', '---')}\n\n"
-        "💡 *Dica: Digite a correção direto no chat ou use os botões:* "
+        "📝 <b>Conferência de Proposta:</b>\n\n"
+        f"🏢 <b>Cliente:</b> {_escape_html(dados.get('Cliente', '---'))}\n"
+        f"📍 <b>Cidade/UF:</b> {_escape_html(dados.get('Cidade', '---'))} / {_escape_html(dados.get('Estado', '---'))}\n"
+        f"👤 <b>Contato:</b> {_escape_html(dados.get('Nome', '---'))}\n"
+        f"📞 <b>Fone:</b> {_escape_html(dados.get('Telefone', '---'))}\n"
+        f"📧 <b>E-mail:</b> {_escape_html(dados.get('Email', '---'))}\n"
+        f"🛠️ <b>Equipamento:</b> {_escape_html(dados.get('Modelo', '---'))}\n"
+        f"🏗️ <b>Tipo Máq:</b> {_escape_html(dados.get('TIPO DE MÁQUINA', '---'))}\n"
+        f"🚜 <b>Mod. Máq:</b> {_escape_html(dados.get('MODELO DE MÁQUINA', '---'))}\n"
+        f"💰 <b>Valor Romp:</b> {_escape_html(dados.get('Valor Rompedor', '---'))}\n"
+        f"🛠️ <b>Valor Kit:</b> {_escape_html(dados.get('Valor Kit', '---'))}\n"
+        f"💳 <b>Pagamento:</b> {_escape_html(dados.get('Condição de pagamento', '---'))}\n"
+        f"🚚 <b>Frete:</b> {_escape_html(dados.get('FRETE', '---'))}\n\n"
+        "💡 <i>Dica: Digite a correção direto no chat ou use os botões:</i> "
     )
 
     keyboard = [
@@ -230,10 +237,18 @@ async def exibir_resumo_edicao(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    if update.callback_query:
-        await update.callback_query.edit_message_text(resumo, reply_markup=reply_markup, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(resumo, reply_markup=reply_markup, parse_mode="Markdown")
+    try:
+        if update.callback_query:
+            await update.callback_query.edit_message_text(resumo, reply_markup=reply_markup, parse_mode="HTML")
+        else:
+            await update.message.reply_text(resumo, reply_markup=reply_markup, parse_mode="HTML")
+    except Exception as e:
+        # Fallback: envia sem formatação caso ainda dê erro
+        print(f"Erro ao enviar resumo formatado: {e}")
+        if update.callback_query:
+            await update.callback_query.edit_message_text(resumo, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(resumo, reply_markup=reply_markup)
 
 async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     dados = context.user_data.get('dados_temp')
@@ -256,7 +271,7 @@ async def exibir_selecao_modelo(query, context: ContextTypes.DEFAULT_TYPE):
     ranking.sort(key=lambda x: x[0], reverse=True)
     keyboard = [[InlineKeyboardButton(f"{'✅ ' if score > 0 else ''}{m['name']}", callback_data=f"file_{m['id']}")] for score, m in ranking[:6]]
     keyboard.append([InlineKeyboardButton("⬅️ Voltar para Edição", callback_data="voltar_edicao")])
-    await query.edit_message_text("🎯 **Selecione o Modelo de Proposta:**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await query.edit_message_text("🎯 <b>Selecione o Modelo de Proposta:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
