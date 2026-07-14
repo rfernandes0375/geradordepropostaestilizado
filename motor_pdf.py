@@ -26,7 +26,10 @@ def get_google_drive_service():
             creds = service_account.Credentials.from_service_account_info(
                 creds_dict, scopes=scopes
             )
-            return build('drive', 'v3', credentials=creds)
+            # Timeout de 60s para evitar TimeoutError em redes instáveis
+            import httplib2
+            http = httplib2.Http(timeout=60)
+            return build('drive', 'v3', credentials=creds, http=creds.authorize(http))
         else:
             st.error("⚠️ Seção [google_cloud] não encontrada no secrets.toml.")
     except Exception as e:
