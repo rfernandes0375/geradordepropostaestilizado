@@ -28,8 +28,10 @@ def get_google_drive_service():
             )
             # Timeout de 60s para evitar TimeoutError em redes instáveis
             import httplib2
+            import google_auth_httplib2
             http = httplib2.Http(timeout=60)
-            return build('drive', 'v3', credentials=creds, http=creds.authorize(http))
+            authed_http = google_auth_httplib2.AuthorizedHttp(creds, http=http)
+            return build('drive', 'v3', http=authed_http)
         else:
             st.error("⚠️ Seção [google_cloud] não encontrada no secrets.toml.")
     except Exception as e:
